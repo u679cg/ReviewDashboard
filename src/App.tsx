@@ -8,6 +8,7 @@ type ReviewStatus = 0 | 1 | 2
 type ReportReviewStatus = 'pending' | 'reviewed'
 type ReportResult = 'valid' | 'invalid'
 type PostAction = 'keep' | 'reject' | 'approve'
+type ChallengeStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 
 type User = {
   id: number
@@ -55,9 +56,38 @@ type PostReport = {
   reviewTime?: string | null
 }
 
-type DashboardTab = 'posts' | 'users' | 'reports'
+type Challenge = {
+  id: number
+  title: string
+  activityLabel: string
+  challengeTag: string
+  description: string
+  inspirationImageUrls: string
+  startTime: string
+  deadline: string
+  status: ChallengeStatus
+}
+
+type AdminChallenge = {
+  challenge: Challenge
+  isExpired: boolean
+  participantCount: number
+}
+
+type DashboardTab = 'posts' | 'users' | 'reports' | 'challenges'
 type PostFilter = 'all' | 'pending' | 'approved' | 'rejected'
 type ReportFilter = 'all' | 'pending' | 'reviewed'
+
+type ChallengeFormValue = {
+  title: string
+  activityLabel: string
+  challengeTag: string
+  description: string
+  inspirationImageUrls: string
+  startTime: string
+  deadline: string
+  status: ChallengeStatus
+}
 
 const postFilters: Array<{ key: PostFilter; label: string }> = [
   { key: 'all', label: '全部' },
@@ -79,6 +109,7 @@ function App() {
   const [posts, setPosts] = useState<Post[]>([])
   const [groups, setGroups] = useState<UserGroup[]>([])
   const [reports, setReports] = useState<PostReport[]>([])
+  const [challenges, setChallenges] = useState<AdminChallenge[]>([])
   const [expandedUsers, setExpandedUsers] = useState<Set<number>>(() => new Set())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -86,19 +117,22 @@ function App() {
 
   const loadData = useCallback(async () => {
     try {
-      const [postRes, groupRes, reportRes] = await Promise.all([
+      const [postRes, groupRes, reportRes, challengeRes] = await Promise.all([
         fetch(`${API_BASE}/api/posts/admin/review-list`),
         fetch(`${API_BASE}/api/posts/admin/grouped-by-user`),
         fetch(`${API_BASE}/api/reports/posts/admin`),
+        fetch(`${API_BASE}/api/challenges/admin`),
       ])
 
       if (!postRes.ok) throw new Error(`动态审核加载失败：HTTP ${postRes.status}`)
       if (!groupRes.ok) throw new Error(`用户分组加载失败：HTTP ${groupRes.status}`)
       if (!reportRes.ok) throw new Error(`举报复审加载失败：HTTP ${reportRes.status}`)
+      if (!challengeRes.ok) throw new Error(`挑战管理加载失败：HTTP ${challengeRes.status}`)
 
       setPosts(await postRes.json())
       setGroups(await groupRes.json())
       setReports(await reportRes.json())
+      setChallenges(await challengeRes.json())
       setError('')
       setLastUpdated(new Date())
     } catch (err) {
@@ -149,6 +183,29 @@ function App() {
     await loadData()
   }
 
+  const saveChallenge = async (challenge: ChallengeFormValue, challengeId?: number) => {
+    const response = await fetch(
+      challengeId ? `${API_BASE}/api/challenges/admin/${challengeId}` : `${API_BASE}/api/challenges/admin`,
+      {
+        method: challengeId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...challenge,
+          startTime: toApiDateTime(challenge.startTime),
+          deadline: toApiDateTime(challenge.deadline),
+        }),
+      },
+    )
+
+    if (!response.ok) {
+      const message = await response.text()
+      setError(message || '挑战保存失败')
+      return false
+    }
+    await loadData()
+    return true
+  }
+
   const filteredPosts = useMemo(() => posts.filter((post) => matchPostFilter(post, postFilter)), [posts, postFilter])
   const filteredReports = useMemo(
     () => reports.filter((report) => reportFilter === 'all' || report.reviewStatus === reportFilter),
@@ -162,8 +219,9 @@ function App() {
       pendingPosts,
       reviewedPosts: posts.length - pendingPosts,
       pendingReports,
+      activeChallenges: challenges.filter((item) => item.challenge.status === 'PUBLISHED' && !item.isExpired).length,
     }
-  }, [posts, reports])
+  }, [posts, reports, challenges])
 
   const toggleUser = (userId: number) => {
     setExpandedUsers((current) => {
@@ -188,6 +246,7 @@ function App() {
           <button className={activeTab === 'posts' ? 'active' : ''} onClick={() => setActiveTab('posts')}>动态审核</button>
           <button className={activeTab === 'users' ? 'active' : ''} onClick={() => setActiveTab('users')}>按用户审核</button>
           <button className={activeTab === 'reports' ? 'active' : ''} onClick={() => setActiveTab('reports')}>举报复审</button>
+          <button className={activeTab === 'challenges' ? 'active' : ''} onClick={() => setActiveTab('challenges')}>挑战管理</button>
         </nav>
         <section className="refresh-box">
           <p>自动刷新</p>
@@ -208,6 +267,7 @@ function App() {
             <StatCard label="未审核动态" value={stats.pendingPosts} tone="red" />
             <StatCard label="已审核动态" value={stats.reviewedPosts} tone="green" />
             <StatCard label="未复审举报" value={stats.pendingReports} tone="orange" />
+            <StatCard label="进行中挑战" value={stats.activeChallenges} tone="red" />
           </div>
         </header>
 
@@ -268,6 +328,10 @@ function App() {
             </div>
             <EmptyState visible={!isLoading && filteredReports.length === 0} text="当前筛选下没有举报记录" />
           </section>
+        )}
+
+        {activeTab === 'challenges' && (
+          <ChallengeWorkspace challenges={challenges} onSave={saveChallenge} />
         )}
       </section>
     </main>
@@ -354,6 +418,132 @@ function ReportCard({
       <button className="review-submit" disabled={reviewed} onClick={() => void onReview(report.id, result, action)}>
         {reviewed ? '已完成复审' : '提交复审'}
       </button>
+    </article>
+  )
+}
+
+function ChallengeWorkspace({
+  challenges,
+  onSave,
+}: {
+  challenges: AdminChallenge[]
+  onSave: (challenge: ChallengeFormValue, challengeId?: number) => Promise<boolean>
+}) {
+  const [editing, setEditing] = useState<AdminChallenge | null>(null)
+  const [form, setForm] = useState<ChallengeFormValue>(() => emptyChallengeForm())
+  const [isSaving, setIsSaving] = useState(false)
+
+  const startEdit = (item: AdminChallenge) => {
+    setEditing(item)
+    setForm(challengeToForm(item.challenge))
+  }
+
+  const resetForm = () => {
+    setEditing(null)
+    setForm(emptyChallengeForm())
+  }
+
+  const submit = async () => {
+    setIsSaving(true)
+    const ok = await onSave(form, editing?.challenge.id)
+    setIsSaving(false)
+    if (ok) resetForm()
+  }
+
+  return (
+    <section className="workspace challenge-workspace">
+      <div className="challenge-editor">
+        <div className="editor-head">
+          <div>
+            <p className="eyebrow">Challenge Ops</p>
+            <h3>{editing ? '编辑挑战' : '发布新挑战'}</h3>
+          </div>
+          {editing && <button className="ghost-button" onClick={resetForm}>取消编辑</button>}
+        </div>
+        <div className="form-grid">
+          <label>
+            主题名
+            <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="春分 · 剪燕" />
+          </label>
+          <label>
+            活动标签
+            <input value={form.activityLabel} onChange={(event) => setForm({ ...form, activityLabel: event.target.value })} placeholder="限时挑战 · 节气篇" />
+          </label>
+          <label>
+            社区标签
+            <input value={form.challengeTag} onChange={(event) => setForm({ ...form, challengeTag: event.target.value })} placeholder="限时挑战 · 节气篇" />
+          </label>
+          <label>
+            状态
+            <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as ChallengeStatus })}>
+              <option value="DRAFT">草稿</option>
+              <option value="PUBLISHED">发布</option>
+              <option value="ARCHIVED">归档</option>
+            </select>
+          </label>
+          <label>
+            开始时间
+            <input type="datetime-local" value={form.startTime} onChange={(event) => setForm({ ...form, startTime: event.target.value })} />
+          </label>
+          <label>
+            截止时间
+            <input type="datetime-local" value={form.deadline} onChange={(event) => setForm({ ...form, deadline: event.target.value })} />
+          </label>
+          <label className="span-2">
+            素材图 URL
+            <input value={form.inspirationImageUrls} onChange={(event) => setForm({ ...form, inspirationImageUrls: event.target.value })} placeholder="/images/a.jpg,/images/b.jpg" />
+          </label>
+          <label className="span-2">
+            主题介绍
+            <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} />
+          </label>
+        </div>
+        <button className="review-submit" disabled={isSaving} onClick={() => void submit()}>
+          {isSaving ? '保存中...' : editing ? '保存修改' : '创建挑战'}
+        </button>
+      </div>
+
+      <div className="challenge-list">
+        {challenges.map((item) => (
+          <ChallengeCard key={item.challenge.id} item={item} onEdit={() => startEdit(item)} />
+        ))}
+      </div>
+      <EmptyState visible={challenges.length === 0} text="暂无挑战活动" />
+    </section>
+  )
+}
+
+function ChallengeCard({ item, onEdit }: { item: AdminChallenge; onEdit: () => void }) {
+  const challenge = item.challenge
+  const images = challenge.inspirationImageUrls
+    .split(',')
+    .map((url) => getFullImageUrl(url))
+    .filter(Boolean)
+    .slice(0, 2)
+
+  return (
+    <article className="challenge-card">
+      <div className="card-topline">
+        <span className={`status-badge ${challengeStatusClass(challenge.status, item.isExpired)}`}>
+          {challengeStatusLabel(challenge.status, item.isExpired)}
+        </span>
+        <time>{formatTime(challenge.deadline)} 截止</time>
+      </div>
+      <div className="challenge-card-body">
+        <div>
+          <p className="eyebrow">{challenge.activityLabel}</p>
+          <h3>{challenge.title}</h3>
+          <p>{challenge.description || '暂无主题介绍'}</p>
+          <div className="challenge-meta">
+            <span>#{challenge.challengeTag}</span>
+            <span>{item.participantCount} 人参与成功</span>
+          </div>
+        </div>
+        <div className="challenge-images">
+          {images.length > 0 ? images.map((url) => <img key={url} src={url} alt="" referrerPolicy="no-referrer" />) : <span>无素材</span>}
+        </div>
+      </div>
+      <button className="ghost-button" onClick={onEdit}>编辑</button>
     </article>
   )
 }
@@ -475,9 +665,64 @@ function formatTime(raw?: string | null) {
   })
 }
 
+function emptyChallengeForm(): ChallengeFormValue {
+  const now = new Date()
+  const deadline = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+  return {
+    title: '',
+    activityLabel: '限时挑战 · 节气篇',
+    challengeTag: '限时挑战 · 节气篇',
+    description: '',
+    inspirationImageUrls: '',
+    startTime: toDatetimeLocal(now.toISOString()),
+    deadline: toDatetimeLocal(deadline.toISOString()),
+    status: 'DRAFT',
+  }
+}
+
+function challengeToForm(challenge: Challenge): ChallengeFormValue {
+  return {
+    title: challenge.title,
+    activityLabel: challenge.activityLabel,
+    challengeTag: challenge.challengeTag,
+    description: challenge.description,
+    inspirationImageUrls: challenge.inspirationImageUrls,
+    startTime: toDatetimeLocal(challenge.startTime),
+    deadline: toDatetimeLocal(challenge.deadline),
+    status: challenge.status,
+  }
+}
+
+function toDatetimeLocal(raw: string) {
+  if (!raw) return ''
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return raw.replace('T', ' ').slice(0, 16).replace(' ', 'T')
+  const offset = date.getTimezoneOffset()
+  const local = new Date(date.getTime() - offset * 60 * 1000)
+  return local.toISOString().slice(0, 16)
+}
+
+function toApiDateTime(value: string) {
+  return value.length === 16 ? `${value}:00` : value
+}
+
+function challengeStatusLabel(status: ChallengeStatus, isExpired: boolean) {
+  if (status === 'PUBLISHED' && isExpired) return '已截止'
+  if (status === 'PUBLISHED') return '进行中'
+  if (status === 'ARCHIVED') return '已归档'
+  return '草稿'
+}
+
+function challengeStatusClass(status: ChallengeStatus, isExpired: boolean) {
+  if (status === 'PUBLISHED' && !isExpired) return 'approved'
+  if (status === 'ARCHIVED') return 'rejected'
+  return 'pending'
+}
+
 function tabTitle(tab: DashboardTab) {
   if (tab === 'users') return '按用户分组审核'
   if (tab === 'reports') return '举报复审'
+  if (tab === 'challenges') return '挑战管理'
   return '动态审核'
 }
 
