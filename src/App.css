@@ -208,6 +208,17 @@ h2 {
   margin-top: 20px;
 }
 
+.audit-center {
+  display: grid;
+  gap: 16px;
+  align-items: start;
+}
+
+.audit-pane {
+  display: grid;
+  gap: 16px;
+}
+
 .segmented {
   display: inline-flex;
   flex-wrap: wrap;
@@ -234,7 +245,6 @@ h2 {
 
 .post-grid,
 .report-grid {
-  margin-top: 16px;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
   gap: 14px;
@@ -655,7 +665,7 @@ time,
   }
 
   .nav-stack {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(2, 1fr);
   }
 
   .nav-stack button {

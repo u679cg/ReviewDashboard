@@ -74,7 +74,8 @@ type AdminChallenge = {
   participantCount: number
 }
 
-type DashboardTab = 'posts' | 'users' | 'reports' | 'challenges'
+type AdminSection = 'audit' | 'operations'
+type AuditView = 'posts' | 'users' | 'reports'
 type PostFilter = 'all' | 'pending' | 'approved' | 'rejected'
 type ReportFilter = 'all' | 'pending' | 'reviewed'
 
@@ -103,7 +104,8 @@ const reportFilters: Array<{ key: ReportFilter; label: string }> = [
 ]
 
 function App() {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('posts')
+  const [activeSection, setActiveSection] = useState<AdminSection>('audit')
+  const [auditView, setAuditView] = useState<AuditView>('posts')
   const [postFilter, setPostFilter] = useState<PostFilter>('all')
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all')
   const [posts, setPosts] = useState<Post[]>([])
@@ -236,17 +238,15 @@ function App() {
     <main className="dashboard-shell">
       <aside className="sidebar">
         <div className="brand-box">
-          <span className="brand-mark">审</span>
+          <span className="brand-mark">管</span>
           <div>
-            <p className="eyebrow">PaperCut Review</p>
-            <h1>剪纸审核台</h1>
+            <p className="eyebrow">PaperCut Admin</p>
+            <h1>剪纸后台管理</h1>
           </div>
         </div>
-        <nav className="nav-stack" aria-label="审核后台导航">
-          <button className={activeTab === 'posts' ? 'active' : ''} onClick={() => setActiveTab('posts')}>动态审核</button>
-          <button className={activeTab === 'users' ? 'active' : ''} onClick={() => setActiveTab('users')}>按用户审核</button>
-          <button className={activeTab === 'reports' ? 'active' : ''} onClick={() => setActiveTab('reports')}>举报复审</button>
-          <button className={activeTab === 'challenges' ? 'active' : ''} onClick={() => setActiveTab('challenges')}>挑战管理</button>
+        <nav className="nav-stack" aria-label="后台管理导航">
+          <button className={activeSection === 'audit' ? 'active' : ''} onClick={() => setActiveSection('audit')}>审核中心</button>
+          <button className={activeSection === 'operations' ? 'active' : ''} onClick={() => setActiveSection('operations')}>运营管理</button>
         </nav>
         <section className="refresh-box">
           <p>自动刷新</p>
@@ -259,8 +259,8 @@ function App() {
       <section className="content-panel">
         <header className="topbar">
           <div>
-            <p className="eyebrow">内容安全工作台</p>
-            <h2>{tabTitle(activeTab)}</h2>
+            <p className="eyebrow">后台管理工作台</p>
+            <h2>{sectionTitle(activeSection, auditView)}</h2>
           </div>
           <div className="stat-grid" aria-label="审核统计">
             <StatCard label="动态总数" value={stats.totalPosts} tone="rice" />
@@ -272,69 +272,134 @@ function App() {
         </header>
 
         {error && <div className="error-banner">{error}</div>}
-        {activeTab === 'posts' && (
+        {activeSection === 'audit' && (
+          <AuditCenter
+            auditView={auditView}
+            setAuditView={setAuditView}
+            postFilter={postFilter}
+            setPostFilter={setPostFilter}
+            reportFilter={reportFilter}
+            setReportFilter={setReportFilter}
+            filteredPosts={filteredPosts}
+            groups={groups}
+            filteredReports={filteredReports}
+            expandedUsers={expandedUsers}
+            toggleUser={toggleUser}
+            isLoading={isLoading}
+            reviewPost={reviewPost}
+            reviewReport={reviewReport}
+          />
+        )}
+
+        {activeSection === 'operations' && (
           <section className="workspace">
-            <SegmentedControl items={postFilters} value={postFilter} onChange={setPostFilter} />
-            <div className="post-grid">
-              {filteredPosts.map((post) => (
-                <PostCard key={post.id} post={post} onReview={reviewPost} />
-              ))}
-            </div>
-            <EmptyState visible={!isLoading && filteredPosts.length === 0} text="当前筛选下没有动态" />
+            <ChallengeWorkspace challenges={challenges} onSave={saveChallenge} />
           </section>
-        )}
-
-        {activeTab === 'users' && (
-          <section className="workspace user-stack">
-            {groups.map((group) => {
-              const userId = group.author?.id ?? 0
-              const expanded = expandedUsers.has(userId)
-              return (
-                <article className="user-bento" key={userId}>
-                  <button className="user-head" onClick={() => toggleUser(userId)}>
-                    <Avatar user={group.author} />
-                    <div>
-                      <strong>{displayName(group.author)}</strong>
-                      <span>{group.totalCount} 条动态 · {group.pendingCount} 条未审核</span>
-                    </div>
-                    <i>{expanded ? '收起' : '展开'}</i>
-                  </button>
-                  <div className="mini-stats">
-                    <span>未审核 {group.pendingCount}</span>
-                    <span>已通过 {group.approvedCount}</span>
-                    <span>已拒绝 {group.rejectedCount}</span>
-                  </div>
-                  {expanded && (
-                    <div className="post-grid compact">
-                      {group.posts.map((post) => (
-                        <PostCard key={post.id} post={post} onReview={reviewPost} compact />
-                      ))}
-                    </div>
-                  )}
-                </article>
-              )
-            })}
-            <EmptyState visible={!isLoading && groups.length === 0} text="暂无用户动态" />
-          </section>
-        )}
-
-        {activeTab === 'reports' && (
-          <section className="workspace">
-            <SegmentedControl items={reportFilters} value={reportFilter} onChange={setReportFilter} />
-            <div className="report-grid">
-              {filteredReports.map((report) => (
-                <ReportCard key={report.id} report={report} onReview={reviewReport} />
-              ))}
-            </div>
-            <EmptyState visible={!isLoading && filteredReports.length === 0} text="当前筛选下没有举报记录" />
-          </section>
-        )}
-
-        {activeTab === 'challenges' && (
-          <ChallengeWorkspace challenges={challenges} onSave={saveChallenge} />
         )}
       </section>
     </main>
+  )
+}
+
+function AuditCenter({
+  auditView,
+  setAuditView,
+  postFilter,
+  setPostFilter,
+  reportFilter,
+  setReportFilter,
+  filteredPosts,
+  groups,
+  filteredReports,
+  expandedUsers,
+  toggleUser,
+  isLoading,
+  reviewPost,
+  reviewReport,
+}: {
+  auditView: AuditView
+  setAuditView: (value: AuditView) => void
+  postFilter: PostFilter
+  setPostFilter: (value: PostFilter) => void
+  reportFilter: ReportFilter
+  setReportFilter: (value: ReportFilter) => void
+  filteredPosts: Post[]
+  groups: UserGroup[]
+  filteredReports: PostReport[]
+  expandedUsers: Set<number>
+  toggleUser: (userId: number) => void
+  isLoading: boolean
+  reviewPost: (postId: number, action: 'pass' | 'reject') => Promise<void>
+  reviewReport: (reportId: number, reportResult: ReportResult, postAction: PostAction) => Promise<void>
+}) {
+  const auditViews: Array<{ key: AuditView; label: string }> = [
+    { key: 'posts', label: '动态审核' },
+    { key: 'users', label: '按用户审核' },
+    { key: 'reports', label: '举报复审' },
+  ]
+
+  return (
+    <section className="workspace audit-center">
+      <SegmentedControl items={auditViews} value={auditView} onChange={setAuditView} />
+
+      {auditView === 'posts' && (
+        <div className="audit-pane">
+          <SegmentedControl items={postFilters} value={postFilter} onChange={setPostFilter} />
+          <div className="post-grid">
+            {filteredPosts.map((post) => (
+              <PostCard key={post.id} post={post} onReview={reviewPost} />
+            ))}
+          </div>
+          <EmptyState visible={!isLoading && filteredPosts.length === 0} text="当前筛选下没有动态" />
+        </div>
+      )}
+
+      {auditView === 'users' && (
+        <div className="audit-pane user-stack">
+          {groups.map((group) => {
+            const userId = group.author?.id ?? 0
+            const expanded = expandedUsers.has(userId)
+            return (
+              <article className="user-bento" key={userId}>
+                <button className="user-head" onClick={() => toggleUser(userId)}>
+                  <Avatar user={group.author} />
+                  <div>
+                    <strong>{displayName(group.author)}</strong>
+                    <span>{group.totalCount} 条动态 · {group.pendingCount} 条未审核</span>
+                  </div>
+                  <i>{expanded ? '收起' : '展开'}</i>
+                </button>
+                <div className="mini-stats">
+                  <span>未审核 {group.pendingCount}</span>
+                  <span>已通过 {group.approvedCount}</span>
+                  <span>已拒绝 {group.rejectedCount}</span>
+                </div>
+                {expanded && (
+                  <div className="post-grid compact">
+                    {group.posts.map((post) => (
+                      <PostCard key={post.id} post={post} onReview={reviewPost} compact />
+                    ))}
+                  </div>
+                )}
+              </article>
+            )
+          })}
+          <EmptyState visible={!isLoading && groups.length === 0} text="暂无用户动态" />
+        </div>
+      )}
+
+      {auditView === 'reports' && (
+        <div className="audit-pane">
+          <SegmentedControl items={reportFilters} value={reportFilter} onChange={setReportFilter} />
+          <div className="report-grid">
+            {filteredReports.map((report) => (
+              <ReportCard key={report.id} report={report} onReview={reviewReport} />
+            ))}
+          </div>
+          <EmptyState visible={!isLoading && filteredReports.length === 0} text="当前筛选下没有举报记录" />
+        </div>
+      )}
+    </section>
   )
 }
 
@@ -451,12 +516,12 @@ function ChallengeWorkspace({
   }
 
   return (
-    <section className="workspace challenge-workspace">
+    <div className="challenge-workspace">
       <div className="challenge-editor">
         <div className="editor-head">
           <div>
-            <p className="eyebrow">Challenge Ops</p>
-            <h3>{editing ? '编辑挑战' : '发布新挑战'}</h3>
+            <p className="eyebrow">活动运营</p>
+            <h3>{editing ? '编辑挑战活动' : '创建挑战活动'}</h3>
           </div>
           {editing && <button className="ghost-button" onClick={resetForm}>取消编辑</button>}
         </div>
@@ -509,7 +574,7 @@ function ChallengeWorkspace({
         ))}
       </div>
       <EmptyState visible={challenges.length === 0} text="暂无挑战活动" />
-    </section>
+    </div>
   )
 }
 
@@ -719,11 +784,11 @@ function challengeStatusClass(status: ChallengeStatus, isExpired: boolean) {
   return 'pending'
 }
 
-function tabTitle(tab: DashboardTab) {
-  if (tab === 'users') return '按用户分组审核'
-  if (tab === 'reports') return '举报复审'
-  if (tab === 'challenges') return '挑战管理'
-  return '动态审核'
+function sectionTitle(section: AdminSection, auditView: AuditView) {
+  if (section === 'operations') return '运营管理'
+  if (auditView === 'users') return '审核中心 · 按用户审核'
+  if (auditView === 'reports') return '审核中心 · 举报复审'
+  return '审核中心 · 动态审核'
 }
 
 export default App
