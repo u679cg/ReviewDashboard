@@ -76,6 +76,7 @@ type AdminChallenge = {
 
 type AdminSection = 'audit' | 'operations'
 type AuditView = 'posts' | 'users' | 'reports'
+type OperationView = 'challenges' | 'fortune'
 type PostFilter = 'all' | 'pending' | 'approved' | 'rejected'
 type ReportFilter = 'all' | 'pending' | 'reviewed'
 
@@ -88,6 +89,23 @@ type ChallengeFormValue = {
   startTime: string
   deadline: string
   status: ChallengeStatus
+}
+
+type FortuneCard = {
+  id: number
+  displayDate: string
+  patternImageUrl: string
+  lunarDate: string
+  solarTerm: string
+  suitableEvents: string
+}
+
+type FortuneCardFormValue = {
+  displayDate: string
+  patternImageUrl: string
+  lunarDate: string
+  solarTerm: string
+  suitableEvents: string
 }
 
 const postFilters: Array<{ key: PostFilter; label: string }> = [
@@ -106,12 +124,14 @@ const reportFilters: Array<{ key: ReportFilter; label: string }> = [
 function App() {
   const [activeSection, setActiveSection] = useState<AdminSection>('audit')
   const [auditView, setAuditView] = useState<AuditView>('posts')
+  const [operationView, setOperationView] = useState<OperationView>('challenges')
   const [postFilter, setPostFilter] = useState<PostFilter>('all')
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all')
   const [posts, setPosts] = useState<Post[]>([])
   const [groups, setGroups] = useState<UserGroup[]>([])
   const [reports, setReports] = useState<PostReport[]>([])
   const [challenges, setChallenges] = useState<AdminChallenge[]>([])
+  const [fortuneCards, setFortuneCards] = useState<FortuneCard[]>([])
   const [expandedUsers, setExpandedUsers] = useState<Set<number>>(() => new Set())
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
@@ -119,22 +139,25 @@ function App() {
 
   const loadData = useCallback(async () => {
     try {
-      const [postRes, groupRes, reportRes, challengeRes] = await Promise.all([
+      const [postRes, groupRes, reportRes, challengeRes, fortuneRes] = await Promise.all([
         fetch(`${API_BASE}/api/posts/admin/review-list`),
         fetch(`${API_BASE}/api/posts/admin/grouped-by-user`),
         fetch(`${API_BASE}/api/reports/posts/admin`),
         fetch(`${API_BASE}/api/challenges/admin`),
+        fetch(`${API_BASE}/api/fortune/admin`),
       ])
 
       if (!postRes.ok) throw new Error(`动态审核加载失败：HTTP ${postRes.status}`)
       if (!groupRes.ok) throw new Error(`用户分组加载失败：HTTP ${groupRes.status}`)
       if (!reportRes.ok) throw new Error(`举报复审加载失败：HTTP ${reportRes.status}`)
       if (!challengeRes.ok) throw new Error(`挑战管理加载失败：HTTP ${challengeRes.status}`)
+      if (!fortuneRes.ok) throw new Error(`福运卡管理加载失败：HTTP ${fortuneRes.status}`)
 
       setPosts(await postRes.json())
       setGroups(await groupRes.json())
       setReports(await reportRes.json())
       setChallenges(await challengeRes.json())
+      setFortuneCards(await fortuneRes.json())
       setError('')
       setLastUpdated(new Date())
     } catch (err) {
@@ -202,6 +225,25 @@ function App() {
     if (!response.ok) {
       const message = await response.text()
       setError(message || '挑战保存失败')
+      return false
+    }
+    await loadData()
+    return true
+  }
+
+  const saveFortuneCard = async (fortuneCard: FortuneCardFormValue, fortuneCardId?: number) => {
+    const response = await fetch(
+      fortuneCardId ? `${API_BASE}/api/fortune/admin/${fortuneCardId}` : `${API_BASE}/api/fortune/admin`,
+      {
+        method: fortuneCardId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(fortuneCard),
+      },
+    )
+
+    if (!response.ok) {
+      const message = await response.text()
+      setError(message || '福运卡保存失败')
       return false
     }
     await loadData()
@@ -293,11 +335,50 @@ function App() {
 
         {activeSection === 'operations' && (
           <section className="workspace">
-            <ChallengeWorkspace challenges={challenges} onSave={saveChallenge} />
+            <OperationsWorkspace
+              operationView={operationView}
+              setOperationView={setOperationView}
+              challenges={challenges}
+              fortuneCards={fortuneCards}
+              onSaveChallenge={saveChallenge}
+              onSaveFortuneCard={saveFortuneCard}
+            />
           </section>
         )}
       </section>
     </main>
+  )
+}
+
+function OperationsWorkspace({
+  operationView,
+  setOperationView,
+  challenges,
+  fortuneCards,
+  onSaveChallenge,
+  onSaveFortuneCard,
+}: {
+  operationView: OperationView
+  setOperationView: (value: OperationView) => void
+  challenges: AdminChallenge[]
+  fortuneCards: FortuneCard[]
+  onSaveChallenge: (challenge: ChallengeFormValue, challengeId?: number) => Promise<boolean>
+  onSaveFortuneCard: (fortuneCard: FortuneCardFormValue, fortuneCardId?: number) => Promise<boolean>
+}) {
+  const operationViews: Array<{ key: OperationView; label: string }> = [
+    { key: 'challenges', label: '挑战活动' },
+    { key: 'fortune', label: '福运卡' },
+  ]
+
+  return (
+    <section className="operations-stack">
+      <SegmentedControl items={operationViews} value={operationView} onChange={setOperationView} />
+      {operationView === 'challenges' ? (
+        <ChallengeWorkspace challenges={challenges} onSave={onSaveChallenge} />
+      ) : (
+        <FortuneWorkspace fortuneCards={fortuneCards} onSave={onSaveFortuneCard} />
+      )}
+    </section>
   )
 }
 
@@ -613,6 +694,105 @@ function ChallengeCard({ item, onEdit }: { item: AdminChallenge; onEdit: () => v
   )
 }
 
+function FortuneWorkspace({
+  fortuneCards,
+  onSave,
+}: {
+  fortuneCards: FortuneCard[]
+  onSave: (fortuneCard: FortuneCardFormValue, fortuneCardId?: number) => Promise<boolean>
+}) {
+  const [editing, setEditing] = useState<FortuneCard | null>(null)
+  const [form, setForm] = useState<FortuneCardFormValue>(() => emptyFortuneCardForm())
+  const [isSaving, setIsSaving] = useState(false)
+
+  const startEdit = (item: FortuneCard) => {
+    setEditing(item)
+    setForm(fortuneCardToForm(item))
+  }
+
+  const resetForm = () => {
+    setEditing(null)
+    setForm(emptyFortuneCardForm())
+  }
+
+  const submit = async () => {
+    setIsSaving(true)
+    const ok = await onSave(form, editing?.id)
+    setIsSaving(false)
+    if (ok) resetForm()
+  }
+
+  return (
+    <div className="fortune-workspace">
+      <div className="fortune-editor">
+        <div className="editor-head">
+          <div>
+            <p className="eyebrow">剪纸历运营</p>
+            <h3>{editing ? '编辑福运卡' : '创建福运卡'}</h3>
+          </div>
+          {editing && <button className="ghost-button" onClick={resetForm}>取消编辑</button>}
+        </div>
+        <div className="form-grid">
+          <label>
+            展示日期
+            <input type="date" value={form.displayDate} onChange={(event) => setForm({ ...form, displayDate: event.target.value })} />
+          </label>
+          <label>
+            节气
+            <input value={form.solarTerm} onChange={(event) => setForm({ ...form, solarTerm: event.target.value })} placeholder="谷雨 · 喜鹊登梅" />
+          </label>
+          <label>
+            农历日期
+            <input value={form.lunarDate} onChange={(event) => setForm({ ...form, lunarDate: event.target.value })} placeholder="庚子年 · 腊月初八" />
+          </label>
+          <label>
+            宜做事件
+            <input value={form.suitableEvents} onChange={(event) => setForm({ ...form, suitableEvents: event.target.value })} placeholder="祈福、纳财" />
+          </label>
+          <label className="span-2">
+            图案图片 URL
+            <input value={form.patternImageUrl} onChange={(event) => setForm({ ...form, patternImageUrl: event.target.value })} placeholder="/images/fortune.jpg" />
+          </label>
+        </div>
+        <button className="review-submit" disabled={isSaving} onClick={() => void submit()}>
+          {isSaving ? '保存中...' : editing ? '保存修改' : '创建福运卡'}
+        </button>
+      </div>
+
+      <div className="fortune-list">
+        {fortuneCards.map((item) => (
+          <FortuneCardItem key={item.id} item={item} onEdit={() => startEdit(item)} />
+        ))}
+      </div>
+      <EmptyState visible={fortuneCards.length === 0} text="暂无福运卡" />
+    </div>
+  )
+}
+
+function FortuneCardItem({ item, onEdit }: { item: FortuneCard; onEdit: () => void }) {
+  const image = getFullImageUrl(item.patternImageUrl)
+
+  return (
+    <article className="fortune-card">
+      <div className="card-topline">
+        <span className="status-badge approved">{item.displayDate}</span>
+        <time>展示日期</time>
+      </div>
+      <div className="fortune-card-body">
+        <div className="fortune-preview">
+          {image ? <img src={image} alt="" referrerPolicy="no-referrer" /> : <span>无图案</span>}
+        </div>
+        <div>
+          <p className="eyebrow">{item.lunarDate}</p>
+          <h3>{item.solarTerm}</h3>
+          <p>宜：{item.suitableEvents}</p>
+        </div>
+      </div>
+      <button className="ghost-button" onClick={onEdit}>编辑</button>
+    </article>
+  )
+}
+
 function PostMini({ post }: { post: Post }) {
   return (
     <div className="post-mini">
@@ -756,6 +936,35 @@ function challengeToForm(challenge: Challenge): ChallengeFormValue {
     deadline: toDatetimeLocal(challenge.deadline),
     status: challenge.status,
   }
+}
+
+function emptyFortuneCardForm(): FortuneCardFormValue {
+  return {
+    displayDate: toDateInputValue(new Date().toISOString()),
+    patternImageUrl: '',
+    lunarDate: '',
+    solarTerm: '',
+    suitableEvents: '',
+  }
+}
+
+function fortuneCardToForm(fortuneCard: FortuneCard): FortuneCardFormValue {
+  return {
+    displayDate: fortuneCard.displayDate,
+    patternImageUrl: fortuneCard.patternImageUrl,
+    lunarDate: fortuneCard.lunarDate,
+    solarTerm: fortuneCard.solarTerm,
+    suitableEvents: fortuneCard.suitableEvents,
+  }
+}
+
+function toDateInputValue(raw: string) {
+  if (!raw) return ''
+  const date = new Date(raw)
+  if (Number.isNaN(date.getTime())) return raw.slice(0, 10)
+  const offset = date.getTimezoneOffset()
+  const local = new Date(date.getTime() - offset * 60 * 1000)
+  return local.toISOString().slice(0, 10)
 }
 
 function toDatetimeLocal(raw: string) {
