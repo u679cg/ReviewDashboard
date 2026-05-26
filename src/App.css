@@ -370,6 +370,37 @@ time,
   word-break: break-word;
 }
 
+.knowledge-card h3 {
+  margin: 0 0 8px;
+  color: var(--ink);
+  font-size: 20px;
+}
+
+.knowledge-question {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  border: 1px dashed #d8c5b2;
+  border-radius: 18px;
+  padding: 12px;
+  background: var(--rice);
+}
+
+.knowledge-question strong {
+  color: var(--red);
+}
+
+.knowledge-question span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.review-note {
+  margin-top: 10px !important;
+  color: var(--muted) !important;
+  font-size: 12px;
+}
+
 .card-actions {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -382,6 +413,11 @@ time,
   border-radius: 16px;
   padding: 11px 14px;
   font-weight: 900;
+}
+
+.card-actions button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .card-actions .approve {
@@ -457,10 +493,19 @@ time,
   align-items: start;
 }
 
+.knowledge-workspace {
+  display: grid;
+  grid-template-columns: minmax(340px, 0.82fr) minmax(380px, 1.18fr);
+  gap: 16px;
+  align-items: start;
+}
+
 .challenge-editor,
 .challenge-card,
 .fortune-editor,
-.fortune-card {
+.fortune-card,
+.knowledge-editor,
+.knowledge-admin-card {
   border-radius: 26px;
   padding: 16px;
   background: #fffaf4;
@@ -521,6 +566,51 @@ time,
 .fortune-list {
   display: grid;
   gap: 14px;
+}
+
+.knowledge-list-pane {
+  display: grid;
+  gap: 14px;
+}
+
+.knowledge-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.knowledge-filters select {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+  font-weight: 800;
+}
+
+.knowledge-list {
+  display: grid;
+  gap: 14px;
+}
+
+.knowledge-admin-card h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 22px;
+}
+
+.knowledge-admin-card p {
+  margin: 8px 0 0;
+  color: var(--brown);
+}
+
+.knowledge-admin-actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-top: 12px;
 }
 
 .challenge-card-body {
@@ -615,6 +705,11 @@ time,
   font: inherit;
   font-weight: 900;
   cursor: pointer;
+}
+
+.ghost-button.danger {
+  color: #b02621;
+  background: #fff4f0;
 }
 
 .challenge-card > .ghost-button,
@@ -752,6 +847,7 @@ time,
   .post-grid.compact,
   .challenge-workspace,
   .fortune-workspace,
+  .knowledge-workspace,
   .form-grid {
     grid-template-columns: 1fr;
   }
