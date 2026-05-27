@@ -76,10 +76,13 @@ type AdminChallenge = {
 
 type AdminSection = 'audit' | 'operations'
 type AuditView = 'posts' | 'users' | 'reports' | 'knowledge'
-type OperationView = 'challenges' | 'fortune' | 'knowledge'
+type OperationView = 'challenges' | 'fortune' | 'knowledge' | 'officialInfo'
 type KnowledgeSubmissionStatus = 'PENDING' | 'ADOPTED' | 'REJECTED'
 type KnowledgeStatus = 'PUBLISHED' | 'ARCHIVED'
+type OfficialInfoStatus = 'PUBLISHED' | 'ARCHIVED'
+type OfficialInfoCategory = 'HOT' | 'INTERVIEW_VIDEO' | 'ACTIVITY' | 'ARTICLE'
 type KnowledgeFilter = 'all' | KnowledgeStatus
+type OfficialInfoFilter = 'all' | OfficialInfoStatus
 type PostFilter = 'all' | 'pending' | 'approved' | 'rejected'
 type ReportFilter = 'all' | 'pending' | 'reviewed'
 
@@ -158,9 +161,49 @@ type KnowledgeFormValue = {
   status: KnowledgeStatus
 }
 
+type OfficialInfoItem = {
+  id: number
+  category: OfficialInfoCategory
+  title: string
+  summary: string
+  content: string
+  coverImageUrl: string
+  videoUrl: string
+  publishDate: string
+  status: OfficialInfoStatus
+  sortOrder: number
+  createTime?: string
+  updateTime?: string
+}
+
+type OfficialInfoFormValue = {
+  category: OfficialInfoCategory
+  title: string
+  summary: string
+  content: string
+  coverImageUrl: string
+  videoUrl: string
+  publishDate: string
+  status: OfficialInfoStatus
+  sortOrder: number
+}
+
 const knowledgeCategories = ['定义', '历史', '技艺', '信仰', '风格', '民俗', '符号', '民族', '传承', '现代']
 
+const officialInfoCategories: Array<{ key: OfficialInfoCategory; label: string }> = [
+  { key: 'HOT', label: '热点信息' },
+  { key: 'INTERVIEW_VIDEO', label: '访谈视频' },
+  { key: 'ACTIVITY', label: '活动资讯' },
+  { key: 'ARTICLE', label: '精选文章' },
+]
+
 const knowledgeFilters: Array<{ key: KnowledgeFilter; label: string }> = [
+  { key: 'all', label: '全部' },
+  { key: 'PUBLISHED', label: '展示中' },
+  { key: 'ARCHIVED', label: '已下架' },
+]
+
+const officialInfoFilters: Array<{ key: OfficialInfoFilter; label: string }> = [
   { key: 'all', label: '全部' },
   { key: 'PUBLISHED', label: '展示中' },
   { key: 'ARCHIVED', label: '已下架' },
@@ -191,6 +234,7 @@ function App() {
   const [challenges, setChallenges] = useState<AdminChallenge[]>([])
   const [fortuneCards, setFortuneCards] = useState<FortuneCard[]>([])
   const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([])
+  const [officialInfoItems, setOfficialInfoItems] = useState<OfficialInfoItem[]>([])
   const [knowledgeSubmissions, setKnowledgeSubmissions] = useState<KnowledgeSubmission[]>([])
   const [expandedUsers, setExpandedUsers] = useState<Set<number>>(() => new Set())
   const [isLoading, setIsLoading] = useState(true)
@@ -199,13 +243,14 @@ function App() {
 
   const loadData = useCallback(async () => {
     try {
-      const [postRes, groupRes, reportRes, challengeRes, fortuneRes, knowledgeRes, knowledgeSubmissionRes] = await Promise.all([
+      const [postRes, groupRes, reportRes, challengeRes, fortuneRes, knowledgeRes, officialInfoRes, knowledgeSubmissionRes] = await Promise.all([
         fetch(`${API_BASE}/api/posts/admin/review-list`),
         fetch(`${API_BASE}/api/posts/admin/grouped-by-user`),
         fetch(`${API_BASE}/api/reports/posts/admin`),
         fetch(`${API_BASE}/api/challenges/admin`),
         fetch(`${API_BASE}/api/fortune/admin`),
         fetch(`${API_BASE}/api/knowledge/admin`),
+        fetch(`${API_BASE}/api/official-info/admin`),
         fetch(`${API_BASE}/api/knowledge/admin/submissions`),
       ])
 
@@ -215,6 +260,7 @@ function App() {
       if (!challengeRes.ok) throw new Error(`挑战管理加载失败：HTTP ${challengeRes.status}`)
       if (!fortuneRes.ok) throw new Error(`福运卡管理加载失败：HTTP ${fortuneRes.status}`)
       if (!knowledgeRes.ok) throw new Error(`科普页管理加载失败：HTTP ${knowledgeRes.status}`)
+      if (!officialInfoRes.ok) throw new Error(`官方资讯加载失败：HTTP ${officialInfoRes.status}`)
       if (!knowledgeSubmissionRes.ok) throw new Error(`科普投稿加载失败：HTTP ${knowledgeSubmissionRes.status}`)
 
       setPosts(await postRes.json())
@@ -223,6 +269,7 @@ function App() {
       setChallenges(await challengeRes.json())
       setFortuneCards(await fortuneRes.json())
       setKnowledgeItems(await knowledgeRes.json())
+      setOfficialInfoItems(await officialInfoRes.json())
       setKnowledgeSubmissions(await knowledgeSubmissionRes.json())
       setError('')
       setLastUpdated(new Date())
@@ -376,6 +423,65 @@ function App() {
     await loadData()
   }
 
+  const saveOfficialInfoItem = async (info: OfficialInfoFormValue, infoId?: number) => {
+    const response = await fetch(
+      infoId ? `${API_BASE}/api/official-info/admin/${infoId}` : `${API_BASE}/api/official-info/admin`,
+      {
+        method: infoId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(info),
+      },
+    )
+
+    if (!response.ok) {
+      const message = await response.text()
+      setError(message || '官方资讯保存失败')
+      return false
+    }
+    await loadData()
+    return true
+  }
+
+  const updateOfficialInfoStatus = async (infoId: number, status: OfficialInfoStatus) => {
+    const response = await fetch(`${API_BASE}/api/official-info/admin/${infoId}/status`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status }),
+    })
+    if (!response.ok) {
+      setError('官方资讯状态更新失败')
+      return
+    }
+    await loadData()
+  }
+
+  const deleteOfficialInfoItem = async (infoId: number) => {
+    const response = await fetch(`${API_BASE}/api/official-info/admin/${infoId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) {
+      setError('官方资讯删除失败')
+      return
+    }
+    await loadData()
+  }
+
+  const uploadOfficialInfoCover = async (file: File) => {
+    const formData = new FormData()
+    formData.append('image', file)
+    const response = await fetch(`${API_BASE}/api/official-info/admin/upload`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!response.ok) {
+      const message = await response.text()
+      setError(message || '封面图上传失败')
+      return ''
+    }
+    const data = await response.json() as { url?: string }
+    return data.url || ''
+  }
+
   const filteredPosts = useMemo(() => posts.filter((post) => matchPostFilter(post, postFilter)), [posts, postFilter])
   const filteredReports = useMemo(
     () => reports.filter((report) => reportFilter === 'all' || report.reviewStatus === reportFilter),
@@ -472,11 +578,16 @@ function App() {
               challenges={challenges}
               fortuneCards={fortuneCards}
               knowledgeItems={knowledgeItems}
+              officialInfoItems={officialInfoItems}
               onSaveChallenge={saveChallenge}
               onSaveFortuneCard={saveFortuneCard}
               onSaveKnowledgeItem={saveKnowledgeItem}
               onUpdateKnowledgeStatus={updateKnowledgeStatus}
               onDeleteKnowledgeItem={deleteKnowledgeItem}
+              onSaveOfficialInfoItem={saveOfficialInfoItem}
+              onUpdateOfficialInfoStatus={updateOfficialInfoStatus}
+              onDeleteOfficialInfoItem={deleteOfficialInfoItem}
+              onUploadOfficialInfoCover={uploadOfficialInfoCover}
             />
           </section>
         )}
@@ -491,27 +602,38 @@ function OperationsWorkspace({
   challenges,
   fortuneCards,
   knowledgeItems,
+  officialInfoItems,
   onSaveChallenge,
   onSaveFortuneCard,
   onSaveKnowledgeItem,
   onUpdateKnowledgeStatus,
   onDeleteKnowledgeItem,
+  onSaveOfficialInfoItem,
+  onUpdateOfficialInfoStatus,
+  onDeleteOfficialInfoItem,
+  onUploadOfficialInfoCover,
 }: {
   operationView: OperationView
   setOperationView: (value: OperationView) => void
   challenges: AdminChallenge[]
   fortuneCards: FortuneCard[]
   knowledgeItems: KnowledgeItem[]
+  officialInfoItems: OfficialInfoItem[]
   onSaveChallenge: (challenge: ChallengeFormValue, challengeId?: number) => Promise<boolean>
   onSaveFortuneCard: (fortuneCard: FortuneCardFormValue, fortuneCardId?: number) => Promise<boolean>
   onSaveKnowledgeItem: (knowledge: KnowledgeFormValue, knowledgeId?: number) => Promise<boolean>
   onUpdateKnowledgeStatus: (knowledgeId: number, status: KnowledgeStatus) => Promise<void>
   onDeleteKnowledgeItem: (knowledgeId: number) => Promise<void>
+  onSaveOfficialInfoItem: (info: OfficialInfoFormValue, infoId?: number) => Promise<boolean>
+  onUpdateOfficialInfoStatus: (infoId: number, status: OfficialInfoStatus) => Promise<void>
+  onDeleteOfficialInfoItem: (infoId: number) => Promise<void>
+  onUploadOfficialInfoCover: (file: File) => Promise<string>
 }) {
   const operationViews: Array<{ key: OperationView; label: string }> = [
     { key: 'challenges', label: '挑战活动' },
     { key: 'fortune', label: '福运卡' },
     { key: 'knowledge', label: '科普页' },
+    { key: 'officialInfo', label: '官方资讯' },
   ]
 
   return (
@@ -529,6 +651,15 @@ function OperationsWorkspace({
           onSave={onSaveKnowledgeItem}
           onUpdateStatus={onUpdateKnowledgeStatus}
           onDelete={onDeleteKnowledgeItem}
+        />
+      )}
+      {operationView === 'officialInfo' && (
+        <OfficialInfoWorkspace
+          items={officialInfoItems}
+          onSave={onSaveOfficialInfoItem}
+          onUpdateStatus={onUpdateOfficialInfoStatus}
+          onDelete={onDeleteOfficialInfoItem}
+          onUploadCover={onUploadOfficialInfoCover}
         />
       )}
     </section>
@@ -1194,6 +1325,213 @@ function KnowledgeAdminCard({
   )
 }
 
+function OfficialInfoWorkspace({
+  items,
+  onSave,
+  onUpdateStatus,
+  onDelete,
+  onUploadCover,
+}: {
+  items: OfficialInfoItem[]
+  onSave: (info: OfficialInfoFormValue, infoId?: number) => Promise<boolean>
+  onUpdateStatus: (infoId: number, status: OfficialInfoStatus) => Promise<void>
+  onDelete: (infoId: number) => Promise<void>
+  onUploadCover: (file: File) => Promise<string>
+}) {
+  const [editing, setEditing] = useState<OfficialInfoItem | null>(null)
+  const [form, setForm] = useState<OfficialInfoFormValue>(() => emptyOfficialInfoForm())
+  const [filter, setFilter] = useState<OfficialInfoFilter>('all')
+  const [categoryFilter, setCategoryFilter] = useState<'全部' | OfficialInfoCategory>('全部')
+  const [isSaving, setIsSaving] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+
+  const filteredItems = items.filter((item) => {
+    const statusMatches = filter === 'all' || item.status === filter
+    const categoryMatches = categoryFilter === '全部' || item.category === categoryFilter
+    return statusMatches && categoryMatches
+  })
+
+  const startEdit = (item: OfficialInfoItem) => {
+    setEditing(item)
+    setForm(officialInfoToForm(item))
+  }
+
+  const resetForm = () => {
+    setEditing(null)
+    setForm(emptyOfficialInfoForm())
+  }
+
+  const submit = async () => {
+    setIsSaving(true)
+    const ok = await onSave(form, editing?.id)
+    setIsSaving(false)
+    if (ok) resetForm()
+  }
+
+  const uploadCover = async (file: File) => {
+    setIsUploading(true)
+    const url = await onUploadCover(file)
+    setIsUploading(false)
+    if (url) setForm({ ...form, coverImageUrl: url })
+  }
+
+  return (
+    <div className="knowledge-workspace">
+      <div className="knowledge-editor">
+        <div className="editor-head">
+          <div>
+            <p className="eyebrow">首页运营</p>
+            <h3>{editing ? '编辑官方资讯' : '新增官方资讯'}</h3>
+          </div>
+          {editing && <button className="ghost-button" onClick={resetForm}>取消编辑</button>}
+        </div>
+        <OfficialInfoForm
+          form={form}
+          setForm={setForm}
+          onUploadCover={uploadCover}
+          isUploading={isUploading}
+        />
+        <button className="review-submit" disabled={isSaving || isUploading} onClick={() => void submit()}>
+          {isSaving ? '保存中...' : editing ? '保存修改' : '新增资讯'}
+        </button>
+      </div>
+
+      <div className="knowledge-list-pane">
+        <div className="knowledge-filters">
+          <SegmentedControl items={officialInfoFilters} value={filter} onChange={setFilter} />
+          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as '全部' | OfficialInfoCategory)}>
+            {['全部', ...officialInfoCategories.map((category) => category.key)].map((category) => (
+              <option key={category} value={category}>{category === '全部' ? '全部分类' : officialInfoCategoryLabel(category as OfficialInfoCategory)}</option>
+            ))}
+          </select>
+        </div>
+        <div className="knowledge-list">
+          {filteredItems.map((item) => (
+            <OfficialInfoAdminCard
+              key={item.id}
+              item={item}
+              onEdit={() => startEdit(item)}
+              onToggleStatus={() => void onUpdateStatus(item.id, item.status === 'PUBLISHED' ? 'ARCHIVED' : 'PUBLISHED')}
+              onDelete={() => {
+                if (window.confirm('确认删除这条官方资讯？')) void onDelete(item.id)
+              }}
+            />
+          ))}
+        </div>
+        <EmptyState visible={filteredItems.length === 0} text="当前筛选下没有官方资讯" />
+      </div>
+    </div>
+  )
+}
+
+function OfficialInfoForm({
+  form,
+  setForm,
+  onUploadCover,
+  isUploading,
+}: {
+  form: OfficialInfoFormValue
+  setForm: (form: OfficialInfoFormValue) => void
+  onUploadCover: (file: File) => void
+  isUploading: boolean
+}) {
+  const coverPreview = getFullImageUrl(form.coverImageUrl)
+
+  return (
+    <div className="form-grid">
+      <label>
+        分类
+        <select value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as OfficialInfoCategory })}>
+          {officialInfoCategories.map((category) => (
+            <option key={category.key} value={category.key}>{category.label}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        状态
+        <select value={form.status} onChange={(event) => setForm({ ...form, status: event.target.value as OfficialInfoStatus })}>
+          <option value="PUBLISHED">展示中</option>
+          <option value="ARCHIVED">已下架</option>
+        </select>
+      </label>
+      <label>
+        发布日期
+        <input type="date" value={form.publishDate} onChange={(event) => setForm({ ...form, publishDate: event.target.value })} />
+      </label>
+      <label>
+        排序值
+        <input type="number" value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) || 0 })} />
+      </label>
+      <label className="span-2">
+        标题
+        <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} placeholder="非遗剪纸添乐趣，安心守护夕阳红" />
+      </label>
+      <label className="span-2">
+        摘要
+        <textarea value={form.summary} onChange={(event) => setForm({ ...form, summary: event.target.value })} rows={3} />
+      </label>
+      <label className="span-2">
+        正文
+        <textarea value={form.content} onChange={(event) => setForm({ ...form, content: event.target.value })} rows={6} />
+      </label>
+      <label className="span-2">
+        封面图
+        <input type="file" accept="image/*" onChange={(event) => {
+          const file = event.currentTarget.files?.[0]
+          if (file) onUploadCover(file)
+          event.currentTarget.value = ''
+        }} />
+        <input value={form.coverImageUrl} onChange={(event) => setForm({ ...form, coverImageUrl: event.target.value })} placeholder="/images/cover.jpg" />
+        <span>{isUploading ? '上传中...' : '可上传本地图片，或手动填写图片 URL'}</span>
+      </label>
+      {coverPreview && (
+        <div className="fortune-preview span-2">
+          <img src={coverPreview} alt="" referrerPolicy="no-referrer" />
+        </div>
+      )}
+      <label className="span-2">
+        视频 / 外链 URL
+        <input value={form.videoUrl} onChange={(event) => setForm({ ...form, videoUrl: event.target.value })} placeholder="https://..." />
+      </label>
+    </div>
+  )
+}
+
+function OfficialInfoAdminCard({
+  item,
+  onEdit,
+  onToggleStatus,
+  onDelete,
+}: {
+  item: OfficialInfoItem
+  onEdit: () => void
+  onToggleStatus: () => void
+  onDelete: () => void
+}) {
+  const cover = getFullImageUrl(item.coverImageUrl)
+
+  return (
+    <article className="knowledge-admin-card">
+      <div className="card-topline">
+        <span className={`status-badge ${item.status === 'PUBLISHED' ? 'approved' : 'rejected'}`}>
+          {item.status === 'PUBLISHED' ? '展示中' : '已下架'}
+        </span>
+        <time>{item.publishDate}</time>
+      </div>
+      {cover && <ImageGridFromUrls imageUrls={cover} />}
+      <p className="eyebrow">{officialInfoCategoryLabel(item.category)} · 排序 {item.sortOrder}</p>
+      <h3>{item.title}</h3>
+      <p>{item.summary || '暂无摘要'}</p>
+      {item.videoUrl && <div className="knowledge-question"><strong>视频链接</strong><span>{item.videoUrl}</span></div>}
+      <div className="knowledge-admin-actions">
+        <button className="ghost-button" onClick={onEdit}>编辑</button>
+        <button className="ghost-button" onClick={onToggleStatus}>{item.status === 'PUBLISHED' ? '下架' : '发布'}</button>
+        <button className="ghost-button danger" onClick={onDelete}>删除</button>
+      </div>
+    </article>
+  )
+}
+
 function PostMini({ post }: { post: Post }) {
   return (
     <div className="post-mini">
@@ -1336,6 +1674,10 @@ function parseOptionText(raw: string) {
   return raw.replace(/^\[/, '').replace(/\]$/, '').replaceAll('"', '').split(',').map((item) => item.trim()).filter(Boolean).join(' / ')
 }
 
+function officialInfoCategoryLabel(category: OfficialInfoCategory) {
+  return officialInfoCategories.find((item) => item.key === category)?.label || '热点信息'
+}
+
 function emptyChallengeForm(): ChallengeFormValue {
   const now = new Date()
   const deadline = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
@@ -1388,6 +1730,20 @@ function emptyKnowledgeForm(): KnowledgeFormValue {
   }
 }
 
+function emptyOfficialInfoForm(): OfficialInfoFormValue {
+  return {
+    category: 'HOT',
+    title: '',
+    summary: '',
+    content: '',
+    coverImageUrl: '',
+    videoUrl: '',
+    publishDate: toDateInputValue(new Date().toISOString()),
+    status: 'PUBLISHED',
+    sortOrder: 0,
+  }
+}
+
 function knowledgeToForm(item: KnowledgeItem): KnowledgeFormValue {
   return {
     category: item.category,
@@ -1399,6 +1755,20 @@ function knowledgeToForm(item: KnowledgeItem): KnowledgeFormValue {
     answer: item.answer,
     answerExplanation: item.answerExplanation,
     status: item.status,
+  }
+}
+
+function officialInfoToForm(item: OfficialInfoItem): OfficialInfoFormValue {
+  return {
+    category: item.category,
+    title: item.title,
+    summary: item.summary,
+    content: item.content,
+    coverImageUrl: item.coverImageUrl,
+    videoUrl: item.videoUrl,
+    publishDate: toDateInputValue(item.publishDate),
+    status: item.status,
+    sortOrder: item.sortOrder,
   }
 }
 
