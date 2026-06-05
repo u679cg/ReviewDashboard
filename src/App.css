@@ -11,6 +11,8 @@
 .post-card,
 .report-card,
 .user-bento,
+.banner-card,
+.banner-editor,
 .challenge-card,
 .challenge-editor,
 .fortune-card,
@@ -559,6 +561,8 @@ time,
 
 .challenge-editor,
 .challenge-card,
+.banner-editor,
+.banner-card,
 .fortune-editor,
 .fortune-card,
 .knowledge-editor,
@@ -586,13 +590,15 @@ time,
 
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  min-width: 0;
 }
 
 .form-grid label {
   display: grid;
   gap: 6px;
+  min-width: 0;
   color: var(--muted);
   font-size: 12px;
   font-weight: 800;
@@ -606,6 +612,9 @@ time,
 .form-grid select,
 .form-grid textarea {
   width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: #fff;
@@ -613,6 +622,157 @@ time,
   padding: 10px 12px;
   font: inherit;
   resize: vertical;
+}
+
+.inline-check {
+  display: flex !important;
+  grid-column: span 2;
+  align-items: center;
+  gap: 10px !important;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  padding: 10px 12px;
+}
+
+.inline-check input {
+  width: auto;
+}
+
+.banner-workspace {
+  display: grid;
+  grid-template-columns: minmax(320px, 0.9fr) minmax(0, 1.1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.banner-list {
+  display: grid;
+  gap: 14px;
+}
+
+.banner-preview {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 18px;
+  background: var(--rice);
+  aspect-ratio: 2.4;
+}
+
+.banner-preview.square {
+  aspect-ratio: 1;
+  max-height: 280px;
+}
+
+.banner-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.banner-preview span {
+  color: var(--muted);
+  font-weight: 800;
+}
+
+.image-upload-field {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.image-upload-field > label {
+  display: grid;
+  gap: 6px;
+}
+
+.image-upload-field span,
+.form-grid label span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.image-upload-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+}
+
+.image-upload-preview {
+  display: grid;
+  gap: 8px;
+  border-radius: 18px;
+  background: var(--rice);
+  padding: 8px;
+}
+
+.image-upload-preview img {
+  width: 100%;
+  aspect-ratio: 1.4;
+  object-fit: cover;
+  border-radius: 12px;
+}
+
+.image-upload-preview button {
+  border: 0;
+  border-radius: 12px;
+  background: #fff;
+  color: var(--red);
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(28, 20, 16, 0.46);
+}
+
+.crop-dialog {
+  width: min(760px, 100%);
+  max-height: calc(100svh - 36px);
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  background: #fffaf4;
+  box-shadow: var(--shadow);
+  padding: 18px;
+}
+
+.crop-preview {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  background: var(--rice);
+}
+
+.crop-preview img {
+  position: absolute;
+  object-fit: cover;
+  transform: translate(-50%, -50%);
+}
+
+.crop-controls {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.crop-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .challenge-list {
@@ -928,6 +1088,7 @@ time,
   .report-grid,
   .post-grid.compact,
   .module-toolbar,
+  .banner-workspace,
   .challenge-workspace,
   .fortune-workspace,
   .knowledge-workspace,
@@ -936,6 +1097,10 @@ time,
   }
 
   .form-grid .span-2 {
+    grid-column: span 1;
+  }
+
+  .inline-check {
     grid-column: span 1;
   }
 

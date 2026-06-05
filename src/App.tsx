@@ -103,7 +103,8 @@ type AdminChallenge = {
 
 type AdminSection = 'audit' | 'operations'
 type AuditView = 'posts' | 'users' | 'reports' | 'knowledge'
-type OperationView = 'challenges' | 'fortune' | 'knowledge' | 'officialInfo'
+type OperationView = 'banners' | 'challenges' | 'fortune' | 'knowledge' | 'officialInfo'
+type BannerPlacement = 'HOME' | 'CULTURE'
 type KnowledgeSubmissionStatus = 'PENDING' | 'ADOPTED' | 'REJECTED'
 type KnowledgeStatus = 'PUBLISHED' | 'ARCHIVED'
 type OfficialInfoStatus = 'PUBLISHED' | 'ARCHIVED'
@@ -215,6 +216,30 @@ type OfficialInfoFormValue = {
   sortOrder: number
 }
 
+type OperationBanner = {
+  id: number
+  placement: BannerPlacement
+  imageUrl: string
+  sortOrder: number
+  enabled: boolean
+  createTime?: string
+  updateTime?: string
+}
+
+type OperationBannerFormValue = {
+  placement: BannerPlacement
+  imageUrl: string
+  sortOrder: number
+  enabled: boolean
+}
+
+type CropRequest = {
+  file: File
+  aspectRatio: number
+  title: string
+  onDone: (file: File) => void
+}
+
 const knowledgeCategories = ['定义', '历史', '技艺', '信仰', '风格', '民俗', '符号', '民族', '传承', '现代']
 
 const officialInfoCategories: Array<{ key: OfficialInfoCategory; label: string }> = [
@@ -247,6 +272,11 @@ const reportFilters: Array<{ key: ReportFilter; label: string }> = [
   { key: 'all', label: '全部举报' },
   { key: 'pending', label: '未复审' },
   { key: 'reviewed', label: '已复审' },
+]
+
+const bannerPlacements: Array<{ key: BannerPlacement; label: string; ratioLabel: string; aspectRatio: number }> = [
+  { key: 'HOME', label: '首页轮播', ratioLabel: '2.4:1', aspectRatio: 2.4 },
+  { key: 'CULTURE', label: '文化页头图', ratioLabel: '1:1', aspectRatio: 1 },
 ]
 
 const reportKinds: Array<{ key: ReportKind; label: string }> = [
@@ -291,6 +321,7 @@ type ModuleKey =
   | 'users'
   | 'reports'
   | 'submissions'
+  | 'banners'
   | 'challenges'
   | 'fortune'
   | 'knowledge'
@@ -350,6 +381,7 @@ function App() {
   const [activeSection, setActiveSection] = useState<AdminSection>('audit')
   const [auditView, setAuditView] = useState<AuditView>('posts')
   const [operationView, setOperationView] = useState<OperationView>('challenges')
+  const [bannerPlacement, setBannerPlacement] = useState<'all' | BannerPlacement>('all')
   const [postFilter, setPostFilter] = useState<PostFilter>('all')
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all')
   const [reportKind, setReportKind] = useState<ReportKind>('posts')
@@ -368,6 +400,7 @@ function App() {
     users: '',
     reports: '',
     submissions: '',
+    banners: '',
     challenges: '',
     fortune: '',
     knowledge: '',
@@ -379,6 +412,7 @@ function App() {
   const [groups, setGroups] = useState<ModuleState<UserGroup>>(() => emptyModuleState())
   const [reports, setReports] = useState<ModuleState<PostReport>>(() => emptyModuleState())
   const [commentReports, setCommentReports] = useState<ModuleState<CommentReport>>(() => emptyModuleState())
+  const [banners, setBanners] = useState<ModuleState<OperationBanner>>(() => emptyModuleState())
   const [challenges, setChallenges] = useState<ModuleState<AdminChallenge>>(() => emptyModuleState())
   const [fortuneCards, setFortuneCards] = useState<ModuleState<FortuneCard>>(() => emptyModuleState())
   const [knowledgeItems, setKnowledgeItems] = useState<ModuleState<KnowledgeItem>>(() => emptyModuleState())
@@ -515,6 +549,14 @@ function App() {
     }), page, setKnowledgeSubmissions, '科普投稿')
   }, [keywords.submissions, knowledgeSubmissionCategory, knowledgeSubmissionFilter, loadPage])
 
+  const loadBanners = useCallback((page = 0) => {
+    return loadPage(buildUrl('/api/operation-banners/admin', {
+      placement: bannerPlacement,
+      page,
+      size: PAGE_SIZE,
+    }), page, setBanners, 'Banner管理')
+  }, [bannerPlacement, loadPage])
+
   const loadChallenges = useCallback((page = 0) => {
     return loadPage(buildUrl('/api/challenges/admin', {
       status: challengeFilter,
@@ -561,13 +603,14 @@ function App() {
       users: loadGroups,
       reports: loadReports,
       submissions: loadSubmissions,
+      banners: loadBanners,
       challenges: loadChallenges,
       fortune: loadFortune,
       knowledge: loadKnowledge,
       officialInfo: loadOfficialInfo,
     }
     return loaders[currentModule](page)
-  }, [currentModule, loadChallenges, loadFortune, loadGroups, loadKnowledge, loadOfficialInfo, loadPosts, loadReports, loadSubmissions])
+  }, [currentModule, loadBanners, loadChallenges, loadFortune, loadGroups, loadKnowledge, loadOfficialInfo, loadPosts, loadReports, loadSubmissions])
 
   useEffect(() => {
     void loadOverview()
@@ -659,6 +702,52 @@ function App() {
     setError('')
     await Promise.all([loadChallenges(0), loadOverview()])
     return true
+  }
+
+  const saveBanner = async (banner: OperationBannerFormValue, bannerId?: number) => {
+    const response = await fetch(
+      bannerId ? `${API_BASE}/api/operation-banners/admin/${bannerId}` : `${API_BASE}/api/operation-banners/admin`,
+      {
+        method: bannerId ? 'PUT' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(banner),
+      },
+    )
+
+    if (!response.ok) {
+      const message = await response.text()
+      setError(message || 'Banner保存失败')
+      return false
+    }
+    setError('')
+    await loadBanners(0)
+    return true
+  }
+
+  const updateBannerEnabled = async (bannerId: number, enabled: boolean) => {
+    const response = await fetch(`${API_BASE}/api/operation-banners/admin/${bannerId}/enabled`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ enabled }),
+    })
+    if (!response.ok) {
+      setError('Banner状态更新失败')
+      return
+    }
+    setError('')
+    await loadBanners()
+  }
+
+  const deleteBanner = async (bannerId: number) => {
+    const response = await fetch(`${API_BASE}/api/operation-banners/admin/${bannerId}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) {
+      setError('Banner删除失败')
+      return
+    }
+    setError('')
+    await loadBanners()
   }
 
   const saveFortuneCard = async (fortuneCard: FortuneCardFormValue, fortuneCardId?: number) => {
@@ -791,16 +880,16 @@ function App() {
     await loadOfficialInfo()
   }
 
-  const uploadOfficialInfoCover = async (file: File) => {
+  const uploadAdminImage = async (file: File) => {
     const formData = new FormData()
     formData.append('image', file)
-    const response = await fetch(`${API_BASE}/api/official-info/admin/upload`, {
+    const response = await fetch(`${API_BASE}/api/admin/uploads/images`, {
       method: 'POST',
       body: formData,
     })
     if (!response.ok) {
       const message = await response.text()
-      setError(message || '封面图上传失败')
+      setError(message || '图片上传失败')
       return ''
     }
     const data = await response.json() as { url?: string }
@@ -842,6 +931,7 @@ function App() {
             users: groups,
             reports: reportKind === 'comments' ? commentReports : reports,
             submissions: knowledgeSubmissions,
+            banners,
             challenges,
             fortune: fortuneCards,
             knowledge: knowledgeItems,
@@ -852,6 +942,7 @@ function App() {
               users: groups,
               reports: reportKind === 'comments' ? commentReports : reports,
               submissions: knowledgeSubmissions,
+              banners,
               challenges,
               fortune: fortuneCards,
               knowledge: knowledgeItems,
@@ -923,6 +1014,7 @@ function App() {
               operationView={operationView}
               setOperationView={setOperationView}
               challenges={challenges}
+              banners={banners}
               fortuneCards={fortuneCards}
               knowledgeItems={knowledgeItems}
               officialInfoItems={officialInfoItems}
@@ -938,6 +1030,8 @@ function App() {
               setOfficialInfoFilter={setOfficialInfoFilter}
               officialInfoCategory={officialInfoCategory}
               setOfficialInfoCategory={setOfficialInfoCategory}
+              bannerPlacement={bannerPlacement}
+              setBannerPlacement={setBannerPlacement}
               fortuneFromDate={fortuneFromDate}
               setFortuneFromDate={setFortuneFromDate}
               fortuneToDate={fortuneToDate}
@@ -946,10 +1040,15 @@ function App() {
               updateKeyword={updateKeyword}
               applySearch={applySearch}
               loadChallenges={loadChallenges}
+              loadBanners={loadBanners}
               loadFortune={loadFortune}
               loadKnowledge={loadKnowledge}
               loadOfficialInfo={loadOfficialInfo}
               overview={overview}
+              onSaveBanner={saveBanner}
+              onUpdateBannerEnabled={updateBannerEnabled}
+              onDeleteBanner={deleteBanner}
+              onUploadImage={uploadAdminImage}
               onSaveChallenge={saveChallenge}
               onSaveFortuneCard={saveFortuneCard}
               onSaveKnowledgeItem={saveKnowledgeItem}
@@ -958,7 +1057,6 @@ function App() {
               onSaveOfficialInfoItem={saveOfficialInfoItem}
               onUpdateOfficialInfoStatus={updateOfficialInfoStatus}
               onDeleteOfficialInfoItem={deleteOfficialInfoItem}
-              onUploadOfficialInfoCover={uploadOfficialInfoCover}
             />
           </section>
         )}
@@ -970,6 +1068,7 @@ function App() {
 function OperationsWorkspace({
   operationView,
   setOperationView,
+  banners,
   challenges,
   fortuneCards,
   knowledgeItems,
@@ -986,6 +1085,8 @@ function OperationsWorkspace({
   setOfficialInfoFilter,
   officialInfoCategory,
   setOfficialInfoCategory,
+  bannerPlacement,
+  setBannerPlacement,
   fortuneFromDate,
   setFortuneFromDate,
   fortuneToDate,
@@ -993,11 +1094,16 @@ function OperationsWorkspace({
   keywords,
   updateKeyword,
   applySearch,
+  loadBanners,
   loadChallenges,
   loadFortune,
   loadKnowledge,
   loadOfficialInfo,
   overview,
+  onSaveBanner,
+  onUpdateBannerEnabled,
+  onDeleteBanner,
+  onUploadImage,
   onSaveChallenge,
   onSaveFortuneCard,
   onSaveKnowledgeItem,
@@ -1006,10 +1112,10 @@ function OperationsWorkspace({
   onSaveOfficialInfoItem,
   onUpdateOfficialInfoStatus,
   onDeleteOfficialInfoItem,
-  onUploadOfficialInfoCover,
 }: {
   operationView: OperationView
   setOperationView: (value: OperationView) => void
+  banners: ModuleState<OperationBanner>
   challenges: ModuleState<AdminChallenge>
   fortuneCards: ModuleState<FortuneCard>
   knowledgeItems: ModuleState<KnowledgeItem>
@@ -1026,6 +1132,8 @@ function OperationsWorkspace({
   setOfficialInfoFilter: (value: OfficialInfoFilter) => void
   officialInfoCategory: '全部' | OfficialInfoCategory
   setOfficialInfoCategory: (value: '全部' | OfficialInfoCategory) => void
+  bannerPlacement: 'all' | BannerPlacement
+  setBannerPlacement: (value: 'all' | BannerPlacement) => void
   fortuneFromDate: string
   setFortuneFromDate: (value: string) => void
   fortuneToDate: string
@@ -1033,11 +1141,16 @@ function OperationsWorkspace({
   keywords: Record<ModuleKey, string>
   updateKeyword: (module: ModuleKey, value: string) => void
   applySearch: (module: ModuleKey, reload: (page?: number) => Promise<void>) => void
+  loadBanners: (page?: number) => Promise<void>
   loadChallenges: (page?: number) => Promise<void>
   loadFortune: (page?: number) => Promise<void>
   loadKnowledge: (page?: number) => Promise<void>
   loadOfficialInfo: (page?: number) => Promise<void>
   overview: AdminOverview
+  onSaveBanner: (banner: OperationBannerFormValue, bannerId?: number) => Promise<boolean>
+  onUpdateBannerEnabled: (bannerId: number, enabled: boolean) => Promise<void>
+  onDeleteBanner: (bannerId: number) => Promise<void>
+  onUploadImage: (file: File) => Promise<string>
   onSaveChallenge: (challenge: ChallengeFormValue, challengeId?: number) => Promise<boolean>
   onSaveFortuneCard: (fortuneCard: FortuneCardFormValue, fortuneCardId?: number) => Promise<boolean>
   onSaveKnowledgeItem: (knowledge: KnowledgeFormValue, knowledgeId?: number) => Promise<boolean>
@@ -1046,9 +1159,9 @@ function OperationsWorkspace({
   onSaveOfficialInfoItem: (info: OfficialInfoFormValue, infoId?: number) => Promise<boolean>
   onUpdateOfficialInfoStatus: (infoId: number, status: OfficialInfoStatus) => Promise<void>
   onDeleteOfficialInfoItem: (infoId: number) => Promise<void>
-  onUploadOfficialInfoCover: (file: File) => Promise<string>
 }) {
   const operationViews: Array<{ key: OperationView; label: string }> = [
+    { key: 'banners', label: 'Banner管理' },
     { key: 'challenges', label: `挑战活动 ${overview.activeChallenges}` },
     { key: 'fortune', label: '福运卡' },
     { key: 'knowledge', label: '科普页' },
@@ -1058,6 +1171,30 @@ function OperationsWorkspace({
   return (
     <section className="operations-stack">
       <SegmentedControl items={operationViews} value={operationView} onChange={setOperationView} />
+      {operationView === 'banners' && (
+        <ModuleFrame
+          state={banners}
+          keyword={keywords.banners}
+          keywordPlaceholder="Banner按位置筛选，无需搜索"
+          onKeywordChange={(value) => updateKeyword('banners', value)}
+          onSearch={() => void loadBanners(0)}
+          onPageChange={(page) => void loadBanners(page)}
+          extraFilters={(
+            <select value={bannerPlacement} onChange={(event) => setBannerPlacement(event.target.value as 'all' | BannerPlacement)}>
+              <option value="all">全部位置</option>
+              {bannerPlacements.map((placement) => <option key={placement.key} value={placement.key}>{placement.label}</option>)}
+            </select>
+          )}
+        >
+          <BannerWorkspace
+            banners={banners.items}
+            onSave={onSaveBanner}
+            onUpdateEnabled={onUpdateBannerEnabled}
+            onDelete={onDeleteBanner}
+            onUploadImage={onUploadImage}
+          />
+        </ModuleFrame>
+      )}
       {operationView === 'challenges' && (
         <ModuleFrame
           state={challenges}
@@ -1068,7 +1205,7 @@ function OperationsWorkspace({
           onPageChange={(page) => void loadChallenges(page)}
           extraFilters={<SegmentedControl items={challengeFilters} value={challengeFilter} onChange={setChallengeFilter} />}
         >
-          <ChallengeWorkspace challenges={challenges.items} onSave={onSaveChallenge} />
+          <ChallengeWorkspace challenges={challenges.items} onSave={onSaveChallenge} onUploadImage={onUploadImage} />
         </ModuleFrame>
       )}
       {operationView === 'fortune' && (
@@ -1086,7 +1223,7 @@ function OperationsWorkspace({
             </>
           )}
         >
-          <FortuneWorkspace fortuneCards={fortuneCards.items} onSave={onSaveFortuneCard} />
+          <FortuneWorkspace fortuneCards={fortuneCards.items} onSave={onSaveFortuneCard} onUploadImage={onUploadImage} />
         </ModuleFrame>
       )}
       {operationView === 'knowledge' && (
@@ -1139,7 +1276,7 @@ function OperationsWorkspace({
             onSave={onSaveOfficialInfoItem}
             onUpdateStatus={onUpdateOfficialInfoStatus}
             onDelete={onDeleteOfficialInfoItem}
-            onUploadCover={onUploadOfficialInfoCover}
+            onUploadCover={onUploadImage}
           />
         </ModuleFrame>
       )}
@@ -1626,16 +1763,161 @@ function KnowledgeSubmissionCard({
   )
 }
 
+function BannerWorkspace({
+  banners,
+  onSave,
+  onUpdateEnabled,
+  onDelete,
+  onUploadImage,
+}: {
+  banners: OperationBanner[]
+  onSave: (banner: OperationBannerFormValue, bannerId?: number) => Promise<boolean>
+  onUpdateEnabled: (bannerId: number, enabled: boolean) => Promise<void>
+  onDelete: (bannerId: number) => Promise<void>
+  onUploadImage: (file: File) => Promise<string>
+}) {
+  const [editing, setEditing] = useState<OperationBanner | null>(null)
+  const [form, setForm] = useState<OperationBannerFormValue>(() => emptyBannerForm())
+  const [isSaving, setIsSaving] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [cropRequest, setCropRequest] = useState<CropRequest | null>(null)
+  const selectedPlacement = bannerPlacements.find((item) => item.key === form.placement) ?? bannerPlacements[0]
+
+  const startEdit = (item: OperationBanner) => {
+    setEditing(item)
+    setForm(operationBannerToForm(item))
+  }
+
+  const resetForm = () => {
+    setEditing(null)
+    setForm(emptyBannerForm())
+  }
+
+  const uploadCroppedBanner = (file: File) => {
+    setCropRequest({
+      file,
+      aspectRatio: selectedPlacement.aspectRatio,
+      title: `${selectedPlacement.label} · ${selectedPlacement.ratioLabel}`,
+      onDone: async (croppedFile) => {
+        setIsUploading(true)
+        const url = await onUploadImage(croppedFile)
+        setIsUploading(false)
+        if (url) setForm((current) => ({ ...current, imageUrl: url }))
+      },
+    })
+  }
+
+  const submit = async () => {
+    setIsSaving(true)
+    const ok = await onSave(form, editing?.id)
+    setIsSaving(false)
+    if (ok) resetForm()
+  }
+
+  return (
+    <div className="banner-workspace">
+      <div className="banner-editor">
+        <div className="editor-head">
+          <div>
+            <p className="eyebrow">移动端运营图</p>
+            <h3>{editing ? '编辑 Banner' : '新增 Banner'}</h3>
+          </div>
+          {editing && <button className="ghost-button" onClick={resetForm}>取消编辑</button>}
+        </div>
+        <div className="form-grid">
+          <label>
+            展示位置
+            <select value={form.placement} onChange={(event) => setForm({ ...form, placement: event.target.value as BannerPlacement })}>
+              {bannerPlacements.map((placement) => (
+                <option key={placement.key} value={placement.key}>{placement.label} · {placement.ratioLabel}</option>
+              ))}
+            </select>
+          </label>
+          <label>
+            排序值
+            <input type="number" value={form.sortOrder} onChange={(event) => setForm({ ...form, sortOrder: Number(event.target.value) || 0 })} />
+          </label>
+          <label className="inline-check">
+            <input type="checkbox" checked={form.enabled} onChange={(event) => setForm({ ...form, enabled: event.target.checked })} />
+            启用展示
+          </label>
+          <ImageUploadField
+            label={`Banner图片（${selectedPlacement.ratioLabel}）`}
+            imageUrls={form.imageUrl}
+            isUploading={isUploading}
+            onChooseFile={uploadCroppedBanner}
+            onRemove={() => setForm({ ...form, imageUrl: '' })}
+          />
+        </div>
+        <button className="review-submit" disabled={isSaving || isUploading || !form.imageUrl} onClick={() => void submit()}>
+          {isSaving ? '保存中...' : editing ? '保存修改' : '新增 Banner'}
+        </button>
+      </div>
+
+      <div className="banner-list">
+        {banners.map((banner) => (
+          <BannerCard
+            key={banner.id}
+            banner={banner}
+            onEdit={() => startEdit(banner)}
+            onToggleEnabled={() => void onUpdateEnabled(banner.id, !banner.enabled)}
+            onDelete={() => {
+              if (window.confirm('确认删除这张 Banner？')) void onDelete(banner.id)
+            }}
+          />
+        ))}
+      </div>
+      <EmptyState visible={banners.length === 0} text="当前筛选下没有 Banner" />
+      {cropRequest && <ImageCropDialog request={cropRequest} onClose={() => setCropRequest(null)} />}
+    </div>
+  )
+}
+
+function BannerCard({
+  banner,
+  onEdit,
+  onToggleEnabled,
+  onDelete,
+}: {
+  banner: OperationBanner
+  onEdit: () => void
+  onToggleEnabled: () => void
+  onDelete: () => void
+}) {
+  const placement = bannerPlacements.find((item) => item.key === banner.placement)
+  const image = getFullImageUrl(banner.imageUrl)
+
+  return (
+    <article className="banner-card">
+      <div className="card-topline">
+        <span className={`status-badge ${banner.enabled ? 'approved' : 'rejected'}`}>{banner.enabled ? '展示中' : '已停用'}</span>
+        <time>{placement?.label || banner.placement} · 排序 {banner.sortOrder}</time>
+      </div>
+      <div className={`banner-preview ${banner.placement === 'CULTURE' ? 'square' : ''}`}>
+        {image ? <img src={image} alt="" referrerPolicy="no-referrer" /> : <span>无图片</span>}
+      </div>
+      <div className="knowledge-admin-actions">
+        <button className="ghost-button" onClick={onEdit}>编辑</button>
+        <button className="ghost-button" onClick={onToggleEnabled}>{banner.enabled ? '停用' : '启用'}</button>
+        <button className="ghost-button danger" onClick={onDelete}>删除</button>
+      </div>
+    </article>
+  )
+}
+
 function ChallengeWorkspace({
   challenges,
   onSave,
+  onUploadImage,
 }: {
   challenges: AdminChallenge[]
   onSave: (challenge: ChallengeFormValue, challengeId?: number) => Promise<boolean>
+  onUploadImage: (file: File) => Promise<string>
 }) {
   const [editing, setEditing] = useState<AdminChallenge | null>(null)
   const [form, setForm] = useState<ChallengeFormValue>(() => emptyChallengeForm())
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
   const startEdit = (item: AdminChallenge) => {
     setEditing(item)
@@ -1652,6 +1934,22 @@ function ChallengeWorkspace({
     const ok = await onSave(form, editing?.challenge.id)
     setIsSaving(false)
     if (ok) resetForm()
+  }
+
+  const uploadImages = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files).slice(0, 6)
+    if (fileArray.length === 0) return
+    setIsUploading(true)
+    const uploadedUrls: string[] = []
+    for (const file of fileArray) {
+      const url = await onUploadImage(file)
+      if (url) uploadedUrls.push(url)
+    }
+    setIsUploading(false)
+    if (uploadedUrls.length > 0) {
+      const existingUrls = splitImageUrls(form.inspirationImageUrls)
+      setForm({ ...form, inspirationImageUrls: [...existingUrls, ...uploadedUrls].slice(0, 6).join(',') })
+    }
   }
 
   return (
@@ -1693,16 +1991,20 @@ function ChallengeWorkspace({
             截止时间
             <input type="datetime-local" value={form.deadline} onChange={(event) => setForm({ ...form, deadline: event.target.value })} />
           </label>
-          <label className="span-2">
-            素材图 URL
-            <input value={form.inspirationImageUrls} onChange={(event) => setForm({ ...form, inspirationImageUrls: event.target.value })} placeholder="/images/a.jpg,/images/b.jpg" />
-          </label>
+          <ImageUploadField
+            label="素材图"
+            imageUrls={form.inspirationImageUrls}
+            multiple
+            isUploading={isUploading}
+            onChooseFiles={uploadImages}
+            onRemove={(url) => setForm({ ...form, inspirationImageUrls: splitImageUrls(form.inspirationImageUrls).filter((item) => item !== url).join(',') })}
+          />
           <label className="span-2">
             主题介绍
             <textarea value={form.description} onChange={(event) => setForm({ ...form, description: event.target.value })} rows={4} />
           </label>
         </div>
-        <button className="review-submit" disabled={isSaving} onClick={() => void submit()}>
+        <button className="review-submit" disabled={isSaving || isUploading} onClick={() => void submit()}>
           {isSaving ? '保存中...' : editing ? '保存修改' : '创建挑战'}
         </button>
       </div>
@@ -1755,13 +2057,16 @@ function ChallengeCard({ item, onEdit }: { item: AdminChallenge; onEdit: () => v
 function FortuneWorkspace({
   fortuneCards,
   onSave,
+  onUploadImage,
 }: {
   fortuneCards: FortuneCard[]
   onSave: (fortuneCard: FortuneCardFormValue, fortuneCardId?: number) => Promise<boolean>
+  onUploadImage: (file: File) => Promise<string>
 }) {
   const [editing, setEditing] = useState<FortuneCard | null>(null)
   const [form, setForm] = useState<FortuneCardFormValue>(() => emptyFortuneCardForm())
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
 
   const startEdit = (item: FortuneCard) => {
     setEditing(item)
@@ -1778,6 +2083,13 @@ function FortuneWorkspace({
     const ok = await onSave(form, editing?.id)
     setIsSaving(false)
     if (ok) resetForm()
+  }
+
+  const uploadPatternImage = async (file: File) => {
+    setIsUploading(true)
+    const url = await onUploadImage(file)
+    setIsUploading(false)
+    if (url) setForm({ ...form, patternImageUrl: url })
   }
 
   return (
@@ -1807,12 +2119,15 @@ function FortuneWorkspace({
             宜做事件
             <input value={form.suitableEvents} onChange={(event) => setForm({ ...form, suitableEvents: event.target.value })} placeholder="祈福、纳财" />
           </label>
-          <label className="span-2">
-            图案图片 URL
-            <input value={form.patternImageUrl} onChange={(event) => setForm({ ...form, patternImageUrl: event.target.value })} placeholder="/images/fortune.jpg" />
-          </label>
+          <ImageUploadField
+            label="图案图片"
+            imageUrls={form.patternImageUrl}
+            isUploading={isUploading}
+            onChooseFile={uploadPatternImage}
+            onRemove={() => setForm({ ...form, patternImageUrl: '' })}
+          />
         </div>
-        <button className="review-submit" disabled={isSaving} onClick={() => void submit()}>
+        <button className="review-submit" disabled={isSaving || isUploading} onClick={() => void submit()}>
           {isSaving ? '保存中...' : editing ? '保存修改' : '创建福运卡'}
         </button>
       </div>
@@ -2160,12 +2475,12 @@ function OfficialInfoForm({
           if (file) onUploadCover(file)
           event.currentTarget.value = ''
         }} />
-        <input value={form.coverImageUrl} onChange={(event) => setForm({ ...form, coverImageUrl: event.target.value })} placeholder="/images/cover.jpg" />
-        <span>{isUploading ? '上传中...' : '可上传本地图片，或手动填写图片 URL'}</span>
+        <span>{isUploading ? '上传中...' : '选择本地图片上传'}</span>
       </label>
       {coverPreview && (
-        <div className="fortune-preview span-2">
+        <div className="image-upload-preview span-2">
           <img src={coverPreview} alt="" referrerPolicy="no-referrer" />
+          <button type="button" onClick={() => setForm({ ...form, coverImageUrl: '' })}>移除</button>
         </div>
       )}
       <label className="span-2">
@@ -2208,6 +2523,131 @@ function OfficialInfoAdminCard({
         <button className="ghost-button danger" onClick={onDelete}>删除</button>
       </div>
     </article>
+  )
+}
+
+function ImageUploadField({
+  label,
+  imageUrls,
+  multiple = false,
+  isUploading,
+  onChooseFile,
+  onChooseFiles,
+  onRemove,
+}: {
+  label: string
+  imageUrls: string
+  multiple?: boolean
+  isUploading: boolean
+  onChooseFile?: (file: File) => void
+  onChooseFiles?: (files: FileList) => void
+  onRemove: (url: string) => void
+}) {
+  const urls = splitImageUrls(imageUrls)
+
+  return (
+    <div className="image-upload-field span-2">
+      <label>
+        {label}
+        <input type="file" accept="image/*" multiple={multiple} onChange={(event) => {
+          const files = event.currentTarget.files
+          if (!files || files.length === 0) return
+          if (multiple) onChooseFiles?.(files)
+          else onChooseFile?.(files[0])
+          event.currentTarget.value = ''
+        }} />
+        <span>{isUploading ? '上传中...' : multiple ? '选择一张或多张图片上传' : '选择本地图片上传'}</span>
+      </label>
+      {urls.length > 0 && (
+        <div className="image-upload-list">
+          {urls.map((url) => (
+            <div className="image-upload-preview" key={url}>
+              <img src={getFullImageUrl(url)} alt="" referrerPolicy="no-referrer" />
+              <button type="button" onClick={() => onRemove(url)}>移除</button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function ImageCropDialog({
+  request,
+  onClose,
+}: {
+  request: CropRequest
+  onClose: () => void
+}) {
+  const [imageUrl, setImageUrl] = useState('')
+  const [offsetX, setOffsetX] = useState(50)
+  const [offsetY, setOffsetY] = useState(50)
+  const [zoom, setZoom] = useState(1)
+  const [isProcessing, setIsProcessing] = useState(false)
+
+  useEffect(() => {
+    const url = URL.createObjectURL(request.file)
+    setImageUrl(url)
+    setOffsetX(50)
+    setOffsetY(50)
+    setZoom(1)
+    return () => URL.revokeObjectURL(url)
+  }, [request.file])
+
+  const confirmCrop = async () => {
+    setIsProcessing(true)
+    try {
+      const cropped = await cropImageFile(request.file, request.aspectRatio, offsetX / 100, offsetY / 100, zoom)
+      request.onDone(cropped)
+      onClose()
+    } finally {
+      setIsProcessing(false)
+    }
+  }
+
+  return (
+    <div className="modal-backdrop" role="dialog" aria-modal="true">
+      <div className="crop-dialog">
+        <div className="editor-head">
+          <div>
+            <p className="eyebrow">手动裁剪</p>
+            <h3>{request.title}</h3>
+          </div>
+          <button className="ghost-button" onClick={onClose}>关闭</button>
+        </div>
+        <div className="crop-preview" style={{ aspectRatio: String(request.aspectRatio) }}>
+          {imageUrl && (
+            <img
+              src={imageUrl}
+              alt=""
+              style={{
+                width: `${zoom * 100}%`,
+                height: `${zoom * 100}%`,
+                left: `${50 - offsetX * zoom}%`,
+                top: `${50 - offsetY * zoom}%`,
+              }}
+            />
+          )}
+        </div>
+        <div className="crop-controls">
+          <label>
+            横向位置
+            <input type="range" min="0" max="100" value={offsetX} onChange={(event) => setOffsetX(Number(event.target.value))} />
+          </label>
+          <label>
+            纵向位置
+            <input type="range" min="0" max="100" value={offsetY} onChange={(event) => setOffsetY(Number(event.target.value))} />
+          </label>
+          <label>
+            缩放
+            <input type="range" min="1" max="3" step="0.05" value={zoom} onChange={(event) => setZoom(Number(event.target.value))} />
+          </label>
+        </div>
+        <button className="review-submit" disabled={isProcessing} onClick={() => void confirmCrop()}>
+          {isProcessing ? '处理中...' : '确认裁剪并上传'}
+        </button>
+      </div>
+    </div>
   )
 }
 
@@ -2370,6 +2810,80 @@ function parseOptionText(raw: string) {
 
 function officialInfoCategoryLabel(category: OfficialInfoCategory) {
   return officialInfoCategories.find((item) => item.key === category)?.label || '热点信息'
+}
+
+function splitImageUrls(raw: string) {
+  return raw
+    .split(',')
+    .map((item) => item.trim())
+    .filter(Boolean)
+}
+
+function cropImageFile(
+  file: File,
+  aspectRatio: number,
+  offsetX: number,
+  offsetY: number,
+  zoom: number,
+): Promise<File> {
+  return new Promise((resolve, reject) => {
+    const image = new Image()
+    const url = URL.createObjectURL(file)
+    image.onload = () => {
+      URL.revokeObjectURL(url)
+      const naturalWidth = image.naturalWidth
+      const naturalHeight = image.naturalHeight
+      let cropWidth = Math.min(naturalWidth, naturalHeight * aspectRatio) / zoom
+      let cropHeight = cropWidth / aspectRatio
+      if (cropHeight > naturalHeight) {
+        cropHeight = naturalHeight / zoom
+        cropWidth = cropHeight * aspectRatio
+      }
+      const sourceX = (naturalWidth - cropWidth) * offsetX
+      const sourceY = (naturalHeight - cropHeight) * offsetY
+      const outputWidth = aspectRatio >= 1 ? 1200 : 1000
+      const outputHeight = Math.round(outputWidth / aspectRatio)
+      const canvas = document.createElement('canvas')
+      canvas.width = outputWidth
+      canvas.height = outputHeight
+      const context = canvas.getContext('2d')
+      if (!context) {
+        reject(new Error('裁剪画布创建失败'))
+        return
+      }
+      context.drawImage(image, sourceX, sourceY, cropWidth, cropHeight, 0, 0, outputWidth, outputHeight)
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('裁剪图片生成失败'))
+          return
+        }
+        resolve(new File([blob], `cropped-${file.name.replace(/\.[^.]+$/, '')}.jpg`, { type: 'image/jpeg' }))
+      }, 'image/jpeg', 0.92)
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('图片读取失败'))
+    }
+    image.src = url
+  })
+}
+
+function emptyBannerForm(): OperationBannerFormValue {
+  return {
+    placement: 'HOME',
+    imageUrl: '',
+    sortOrder: 0,
+    enabled: true,
+  }
+}
+
+function operationBannerToForm(banner: OperationBanner): OperationBannerFormValue {
+  return {
+    placement: banner.placement,
+    imageUrl: banner.imageUrl,
+    sortOrder: banner.sortOrder,
+    enabled: banner.enabled,
+  }
 }
 
 function emptyChallengeForm(): ChallengeFormValue {
