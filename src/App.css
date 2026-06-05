@@ -809,6 +809,31 @@ time,
   padding: 12px;
 }
 
+.comment-mini {
+  display: grid;
+  gap: 6px;
+  border: 1px solid #eadbc9;
+  border-radius: 18px;
+  padding: 12px;
+  background: #fff;
+}
+
+.comment-mini strong {
+  color: var(--ink);
+}
+
+.comment-mini span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.comment-mini p {
+  margin: 0;
+  color: var(--brown);
+  line-height: 1.55;
+}
+
 .review-controls {
   display: grid;
   grid-template-columns: 1fr 1fr;

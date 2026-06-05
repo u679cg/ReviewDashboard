@@ -8,6 +8,8 @@ type ReviewStatus = 0 | 1 | 2
 type ReportReviewStatus = 'pending' | 'reviewed'
 type ReportResult = 'valid' | 'invalid'
 type PostAction = 'keep' | 'reject' | 'approve'
+type CommentAction = 'keep' | 'delete'
+type ReportKind = 'posts' | 'comments'
 type ChallengeStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
 
 type User = {
@@ -52,6 +54,31 @@ type PostReport = {
   reviewStatus: ReportReviewStatus
   reportResult?: ReportResult | null
   postAction?: PostAction | null
+  createTime?: string
+  reviewTime?: string | null
+}
+
+type CommentSummary = {
+  id: number
+  postId?: number | null
+  parentId?: number | null
+  author?: User | null
+  replyToUser?: User | null
+  content: string
+  likeCount?: number
+  createTime?: string
+}
+
+type CommentReport = {
+  id: number
+  comment?: CommentSummary | null
+  post?: Post | null
+  reporter?: User | null
+  reason: string
+  description?: string
+  reviewStatus: ReportReviewStatus
+  reportResult?: ReportResult | null
+  commentAction?: CommentAction | null
   createTime?: string
   reviewTime?: string | null
 }
@@ -222,6 +249,11 @@ const reportFilters: Array<{ key: ReportFilter; label: string }> = [
   { key: 'reviewed', label: '已复审' },
 ]
 
+const reportKinds: Array<{ key: ReportKind; label: string }> = [
+  { key: 'posts', label: '动态举报' },
+  { key: 'comments', label: '评论举报' },
+]
+
 type ChallengeFilter = 'all' | ChallengeStatus
 type KnowledgeSourceFilter = 'all' | 'OFFICIAL' | 'USER'
 type KnowledgeSubmissionFilter = 'all' | KnowledgeSubmissionStatus
@@ -320,6 +352,7 @@ function App() {
   const [operationView, setOperationView] = useState<OperationView>('challenges')
   const [postFilter, setPostFilter] = useState<PostFilter>('all')
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all')
+  const [reportKind, setReportKind] = useState<ReportKind>('posts')
   const [challengeFilter, setChallengeFilter] = useState<ChallengeFilter>('all')
   const [knowledgeFilter, setKnowledgeFilter] = useState<KnowledgeFilter>('all')
   const [knowledgeCategory, setKnowledgeCategory] = useState('全部')
@@ -345,6 +378,7 @@ function App() {
   const [posts, setPosts] = useState<ModuleState<Post>>(() => emptyModuleState())
   const [groups, setGroups] = useState<ModuleState<UserGroup>>(() => emptyModuleState())
   const [reports, setReports] = useState<ModuleState<PostReport>>(() => emptyModuleState())
+  const [commentReports, setCommentReports] = useState<ModuleState<CommentReport>>(() => emptyModuleState())
   const [challenges, setChallenges] = useState<ModuleState<AdminChallenge>>(() => emptyModuleState())
   const [fortuneCards, setFortuneCards] = useState<ModuleState<FortuneCard>>(() => emptyModuleState())
   const [knowledgeItems, setKnowledgeItems] = useState<ModuleState<KnowledgeItem>>(() => emptyModuleState())
@@ -455,13 +489,21 @@ function App() {
   }, [keywords.users, loadPage, postFilter])
 
   const loadReports = useCallback((page = 0) => {
+    if (reportKind === 'comments') {
+      return loadPage(buildUrl('/api/reports/comments/admin', {
+        reviewStatus: reportFilter,
+        keyword: keywords.reports,
+        page,
+        size: PAGE_SIZE,
+      }), page, setCommentReports, '评论举报复审')
+    }
     return loadPage(buildUrl('/api/reports/posts/admin', {
       reviewStatus: reportFilter,
       keyword: keywords.reports,
       page,
       size: PAGE_SIZE,
-    }), page, setReports, '举报复审')
-  }, [keywords.reports, loadPage, reportFilter])
+    }), page, setReports, '动态举报复审')
+  }, [keywords.reports, loadPage, reportFilter, reportKind])
 
   const loadSubmissions = useCallback((page = 0) => {
     return loadPage(buildUrl('/api/knowledge/admin/submissions', {
@@ -570,6 +612,25 @@ function App() {
 
     if (!response.ok) {
       setError('举报复审操作失败')
+      return
+    }
+    setError('')
+    await Promise.all([loadReports(), loadOverview()])
+  }
+
+  const reviewCommentReport = async (
+    reportId: number,
+    reportResult: ReportResult,
+    commentAction: CommentAction,
+  ) => {
+    const response = await fetch(`${API_BASE}/api/reports/comments/${reportId}/review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reportResult, commentAction }),
+    })
+
+    if (!response.ok) {
+      setError('评论举报复审操作失败')
       return
     }
     setError('')
@@ -779,7 +840,7 @@ function App() {
           <button onClick={() => void refreshCurrentModule(0)} disabled={currentModuleState({
             posts,
             users: groups,
-            reports,
+            reports: reportKind === 'comments' ? commentReports : reports,
             submissions: knowledgeSubmissions,
             challenges,
             fortune: fortuneCards,
@@ -789,7 +850,7 @@ function App() {
             {currentModuleState({
               posts,
               users: groups,
-              reports,
+              reports: reportKind === 'comments' ? commentReports : reports,
               submissions: knowledgeSubmissions,
               challenges,
               fortune: fortuneCards,
@@ -826,6 +887,8 @@ function App() {
             setPostFilter={setPostFilter}
             reportFilter={reportFilter}
             setReportFilter={setReportFilter}
+            reportKind={reportKind}
+            setReportKind={setReportKind}
             knowledgeSubmissionFilter={knowledgeSubmissionFilter}
             setKnowledgeSubmissionFilter={setKnowledgeSubmissionFilter}
             knowledgeSubmissionCategory={knowledgeSubmissionCategory}
@@ -837,6 +900,7 @@ function App() {
             groups={groups}
             groupPosts={groupPosts}
             reports={reports}
+            commentReports={commentReports}
             knowledgeSubmissions={knowledgeSubmissions}
             expandedUsers={expandedUsers}
             toggleUser={toggleUser}
@@ -848,6 +912,7 @@ function App() {
             overview={overview}
             reviewPost={reviewPost}
             reviewReport={reviewReport}
+            reviewCommentReport={reviewCommentReport}
             reviewKnowledgeSubmission={reviewKnowledgeSubmission}
           />
         )}
@@ -1089,6 +1154,8 @@ function AuditCenter({
   setPostFilter,
   reportFilter,
   setReportFilter,
+  reportKind,
+  setReportKind,
   knowledgeSubmissionFilter,
   setKnowledgeSubmissionFilter,
   knowledgeSubmissionCategory,
@@ -1100,6 +1167,7 @@ function AuditCenter({
   groups,
   groupPosts,
   reports,
+  commentReports,
   knowledgeSubmissions,
   expandedUsers,
   toggleUser,
@@ -1111,6 +1179,7 @@ function AuditCenter({
   overview,
   reviewPost,
   reviewReport,
+  reviewCommentReport,
   reviewKnowledgeSubmission,
 }: {
   auditView: AuditView
@@ -1119,6 +1188,8 @@ function AuditCenter({
   setPostFilter: (value: PostFilter) => void
   reportFilter: ReportFilter
   setReportFilter: (value: ReportFilter) => void
+  reportKind: ReportKind
+  setReportKind: (value: ReportKind) => void
   knowledgeSubmissionFilter: KnowledgeSubmissionFilter
   setKnowledgeSubmissionFilter: (value: KnowledgeSubmissionFilter) => void
   knowledgeSubmissionCategory: string
@@ -1130,6 +1201,7 @@ function AuditCenter({
   groups: ModuleState<UserGroup>
   groupPosts: Record<number, ModuleState<Post>>
   reports: ModuleState<PostReport>
+  commentReports: ModuleState<CommentReport>
   knowledgeSubmissions: ModuleState<KnowledgeSubmission>
   expandedUsers: Set<number>
   toggleUser: (userId: number) => void
@@ -1141,6 +1213,7 @@ function AuditCenter({
   overview: AdminOverview
   reviewPost: (postId: number, action: 'pass' | 'reject') => Promise<void>
   reviewReport: (reportId: number, reportResult: ReportResult, postAction: PostAction) => Promise<void>
+  reviewCommentReport: (reportId: number, reportResult: ReportResult, commentAction: CommentAction) => Promise<void>
   reviewKnowledgeSubmission: (submissionId: number, action: 'adopt' | 'reject') => Promise<void>
 }) {
   const auditViews: Array<{ key: AuditView; label: string }> = [
@@ -1230,20 +1303,38 @@ function AuditCenter({
 
       {auditView === 'reports' && (
         <ModuleFrame
-          state={reports}
+          state={reportKind === 'comments' ? commentReports : reports}
           keyword={keywords.reports}
-          keywordPlaceholder="搜索举报原因、描述、用户、动态"
+          keywordPlaceholder={reportKind === 'comments' ? '搜索举报原因、评论、用户、动态' : '搜索举报原因、描述、用户、动态'}
           onKeywordChange={(value) => updateKeyword('reports', value)}
           onSearch={() => applySearch('reports', loadReports)}
           onPageChange={(page) => void loadReports(page)}
-          extraFilters={<SegmentedControl items={reportFilters} value={reportFilter} onChange={setReportFilter} />}
+          extraFilters={(
+            <>
+              <SegmentedControl items={reportKinds} value={reportKind} onChange={setReportKind} />
+              <SegmentedControl items={reportFilters} value={reportFilter} onChange={setReportFilter} />
+            </>
+          )}
         >
-          <div className="report-grid">
-            {reports.items.map((report) => (
-              <ReportCard key={report.id} report={report} onReview={reviewReport} />
-            ))}
-          </div>
-          <EmptyState visible={!reports.isLoading && reports.items.length === 0} text="当前筛选下没有举报记录" />
+          {reportKind === 'comments' ? (
+            <>
+              <div className="report-grid">
+                {commentReports.items.map((report) => (
+                  <CommentReportCard key={report.id} report={report} onReview={reviewCommentReport} />
+                ))}
+              </div>
+              <EmptyState visible={!commentReports.isLoading && commentReports.items.length === 0} text="当前筛选下没有评论举报记录" />
+            </>
+          ) : (
+            <>
+              <div className="report-grid">
+                {reports.items.map((report) => (
+                  <ReportCard key={report.id} report={report} onReview={reviewReport} />
+                ))}
+              </div>
+              <EmptyState visible={!reports.isLoading && reports.items.length === 0} text="当前筛选下没有动态举报记录" />
+            </>
+          )}
         </ModuleFrame>
       )}
 
@@ -1428,6 +1519,60 @@ function ReportCard({
             <option value="keep">保持原状态</option>
             <option value="reject">下架拒绝</option>
             <option value="approve">通过展示</option>
+          </select>
+        </label>
+      </div>
+      <button className="review-submit" disabled={reviewed} onClick={() => void onReview(report.id, result, action)}>
+        {reviewed ? '已完成复审' : '提交复审'}
+      </button>
+    </article>
+  )
+}
+
+function CommentReportCard({
+  report,
+  onReview,
+}: {
+  report: CommentReport
+  onReview: (reportId: number, reportResult: ReportResult, commentAction: CommentAction) => Promise<void>
+}) {
+  const [result, setResult] = useState<ReportResult>('valid')
+  const [action, setAction] = useState<CommentAction>('keep')
+  const reviewed = report.reviewStatus === 'reviewed'
+
+  return (
+    <article className={`report-card ${reviewed ? 'is-reviewed' : ''}`}>
+      <div className="card-topline">
+        <span className={`status-badge ${reviewed ? 'approved' : 'pending'}`}>{reviewed ? '已复审' : '未复审'}</span>
+        <time>{formatTime(report.createTime)}</time>
+      </div>
+      <div className="report-reason">
+        <strong>{report.reason}</strong>
+        <p>{report.description || '举报人未填写补充说明'}</p>
+      </div>
+      <div className="report-meta">
+        <span>举报人：{displayName(report.reporter)}</span>
+        <span>评论作者：{displayName(report.comment?.author)}</span>
+      </div>
+      <div className="comment-mini">
+        <strong>{report.comment ? displayName(report.comment.author) : '评论已删除'}</strong>
+        {report.comment?.replyToUser && <span>回复 @{displayName(report.comment.replyToUser)}</span>}
+        <p>{report.comment?.content || '该评论已被删除或解除关联'}</p>
+      </div>
+      {report.post && <PostMini post={report.post} />}
+      <div className="review-controls">
+        <label>
+          举报结果
+          <select value={reviewed ? report.reportResult ?? result : result} onChange={(event) => setResult(event.target.value as ReportResult)} disabled={reviewed}>
+            <option value="valid">举报成立</option>
+            <option value="invalid">举报不成立</option>
+          </select>
+        </label>
+        <label>
+          评论处理
+          <select value={reviewed ? report.commentAction ?? action : action} onChange={(event) => setAction(event.target.value as CommentAction)} disabled={reviewed}>
+            <option value="keep">保留评论</option>
+            <option value="delete">删除评论</option>
           </select>
         </label>
       </div>
