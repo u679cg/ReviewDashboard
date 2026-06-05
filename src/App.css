@@ -221,6 +221,63 @@ h2 {
   gap: 16px;
 }
 
+.module-frame {
+  display: grid;
+  gap: 14px;
+}
+
+.module-toolbar {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.8fr) minmax(280px, 1.2fr);
+  gap: 12px;
+  align-items: center;
+}
+
+.module-search {
+  display: flex;
+  gap: 8px;
+}
+
+.module-search input,
+.module-filters input,
+.module-filters select {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: #fff;
+  color: var(--ink);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.module-search input {
+  flex: 1;
+}
+
+.module-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.module-meta,
+.pagination-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.pagination-bar {
+  justify-content: center;
+}
+
 .segmented {
   display: inline-flex;
   flex-wrap: wrap;
@@ -845,6 +902,7 @@ time,
   .post-grid,
   .report-grid,
   .post-grid.compact,
+  .module-toolbar,
   .challenge-workspace,
   .fortune-workspace,
   .knowledge-workspace,
@@ -862,6 +920,10 @@ time,
 
   .fortune-card-body {
     grid-template-columns: 1fr;
+  }
+
+  .module-filters {
+    justify-content: flex-start;
   }
 
   .brand-box {

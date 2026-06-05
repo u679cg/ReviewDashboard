@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
+import type { Dispatch, ReactNode, SetStateAction } from 'react'
 import './App.css'
 
 const API_BASE = 'http://43.143.241.204:8080'
-const REFRESH_INTERVAL_MS = 30_000
 
 type ReviewStatus = 0 | 1 | 2
 type ReportReviewStatus = 'pending' | 'reviewed'
@@ -40,7 +40,7 @@ type UserGroup = {
   pendingCount: number
   approvedCount: number
   rejectedCount: number
-  posts: Post[]
+  latestPostTime?: string | null
 }
 
 type PostReport = {
@@ -222,72 +222,325 @@ const reportFilters: Array<{ key: ReportFilter; label: string }> = [
   { key: 'reviewed', label: '已复审' },
 ]
 
+type ChallengeFilter = 'all' | ChallengeStatus
+type KnowledgeSourceFilter = 'all' | 'OFFICIAL' | 'USER'
+type KnowledgeSubmissionFilter = 'all' | KnowledgeSubmissionStatus
+
+type AdminPageResponse<T> = {
+  items: T[]
+  page: number
+  size: number
+  totalElements: number
+  totalPages: number
+  hasMore: boolean
+}
+
+type ModuleState<T> = AdminPageResponse<T> & {
+  isLoading: boolean
+  isRefreshing: boolean
+  error: string
+  loaded: boolean
+  lastUpdated: string | null
+}
+
+type AdminOverview = {
+  totalPosts: number
+  pendingPosts: number
+  approvedPosts: number
+  rejectedPosts: number
+  reviewedPosts: number
+  pendingReports: number
+  pendingKnowledgeSubmissions: number
+  activeChallenges: number
+}
+
+type ModuleKey =
+  | 'posts'
+  | 'users'
+  | 'reports'
+  | 'submissions'
+  | 'challenges'
+  | 'fortune'
+  | 'knowledge'
+  | 'officialInfo'
+
+const PAGE_SIZE = 20
+const OVERVIEW_REFRESH_INTERVAL_MS = 60_000
+
+const challengeFilters: Array<{ key: ChallengeFilter; label: string }> = [
+  { key: 'all', label: '全部挑战' },
+  { key: 'DRAFT', label: '草稿' },
+  { key: 'PUBLISHED', label: '已发布' },
+  { key: 'ARCHIVED', label: '已归档' },
+]
+
+const knowledgeSourceFilters: Array<{ key: KnowledgeSourceFilter; label: string }> = [
+  { key: 'all', label: '全部来源' },
+  { key: 'OFFICIAL', label: '官方内容' },
+  { key: 'USER', label: '用户投稿' },
+]
+
+const knowledgeSubmissionFilters: Array<{ key: KnowledgeSubmissionFilter; label: string }> = [
+  { key: 'all', label: '全部投稿' },
+  { key: 'PENDING', label: '待审核' },
+  { key: 'ADOPTED', label: '已采纳' },
+  { key: 'REJECTED', label: '已拒绝' },
+]
+
+const emptyOverview: AdminOverview = {
+  totalPosts: 0,
+  pendingPosts: 0,
+  approvedPosts: 0,
+  rejectedPosts: 0,
+  reviewedPosts: 0,
+  pendingReports: 0,
+  pendingKnowledgeSubmissions: 0,
+  activeChallenges: 0,
+}
+
+function emptyModuleState<T>(): ModuleState<T> {
+  return {
+    items: [],
+    page: 0,
+    size: PAGE_SIZE,
+    totalElements: 0,
+    totalPages: 0,
+    hasMore: false,
+    isLoading: false,
+    isRefreshing: false,
+    error: '',
+    loaded: false,
+    lastUpdated: null,
+  }
+}
+
 function App() {
   const [activeSection, setActiveSection] = useState<AdminSection>('audit')
   const [auditView, setAuditView] = useState<AuditView>('posts')
   const [operationView, setOperationView] = useState<OperationView>('challenges')
   const [postFilter, setPostFilter] = useState<PostFilter>('all')
   const [reportFilter, setReportFilter] = useState<ReportFilter>('all')
-  const [posts, setPosts] = useState<Post[]>([])
-  const [groups, setGroups] = useState<UserGroup[]>([])
-  const [reports, setReports] = useState<PostReport[]>([])
-  const [challenges, setChallenges] = useState<AdminChallenge[]>([])
-  const [fortuneCards, setFortuneCards] = useState<FortuneCard[]>([])
-  const [knowledgeItems, setKnowledgeItems] = useState<KnowledgeItem[]>([])
-  const [officialInfoItems, setOfficialInfoItems] = useState<OfficialInfoItem[]>([])
-  const [knowledgeSubmissions, setKnowledgeSubmissions] = useState<KnowledgeSubmission[]>([])
+  const [challengeFilter, setChallengeFilter] = useState<ChallengeFilter>('all')
+  const [knowledgeFilter, setKnowledgeFilter] = useState<KnowledgeFilter>('all')
+  const [knowledgeCategory, setKnowledgeCategory] = useState('全部')
+  const [knowledgeSource, setKnowledgeSource] = useState<KnowledgeSourceFilter>('all')
+  const [officialInfoFilter, setOfficialInfoFilter] = useState<OfficialInfoFilter>('all')
+  const [officialInfoCategory, setOfficialInfoCategory] = useState<'全部' | OfficialInfoCategory>('全部')
+  const [knowledgeSubmissionFilter, setKnowledgeSubmissionFilter] = useState<KnowledgeSubmissionFilter>('all')
+  const [knowledgeSubmissionCategory, setKnowledgeSubmissionCategory] = useState('全部')
+  const [fortuneFromDate, setFortuneFromDate] = useState('')
+  const [fortuneToDate, setFortuneToDate] = useState('')
+  const initialKeywords: Record<ModuleKey, string> = {
+    posts: '',
+    users: '',
+    reports: '',
+    submissions: '',
+    challenges: '',
+    fortune: '',
+    knowledge: '',
+    officialInfo: '',
+  }
+  const [keywords, setKeywords] = useState<Record<ModuleKey, string>>(initialKeywords)
+  const [searchInputs, setSearchInputs] = useState<Record<ModuleKey, string>>(initialKeywords)
+  const [posts, setPosts] = useState<ModuleState<Post>>(() => emptyModuleState())
+  const [groups, setGroups] = useState<ModuleState<UserGroup>>(() => emptyModuleState())
+  const [reports, setReports] = useState<ModuleState<PostReport>>(() => emptyModuleState())
+  const [challenges, setChallenges] = useState<ModuleState<AdminChallenge>>(() => emptyModuleState())
+  const [fortuneCards, setFortuneCards] = useState<ModuleState<FortuneCard>>(() => emptyModuleState())
+  const [knowledgeItems, setKnowledgeItems] = useState<ModuleState<KnowledgeItem>>(() => emptyModuleState())
+  const [officialInfoItems, setOfficialInfoItems] = useState<ModuleState<OfficialInfoItem>>(() => emptyModuleState())
+  const [knowledgeSubmissions, setKnowledgeSubmissions] = useState<ModuleState<KnowledgeSubmission>>(() => emptyModuleState())
+  const [groupPosts, setGroupPosts] = useState<Record<number, ModuleState<Post>>>({})
   const [expandedUsers, setExpandedUsers] = useState<Set<number>>(() => new Set())
-  const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState('')
-  const [lastUpdated, setLastUpdated] = useState<Date | null>(null)
+  const [overviewError, setOverviewError] = useState('')
+  const [overview, setOverview] = useState<AdminOverview>(emptyOverview)
+  const [overviewUpdatedAt, setOverviewUpdatedAt] = useState<string | null>(null)
 
-  const loadData = useCallback(async () => {
+  const updateKeyword = (module: ModuleKey, value: string) => {
+    setSearchInputs((current) => ({ ...current, [module]: value }))
+  }
+
+  const applySearch = (module: ModuleKey, reload: (page?: number) => Promise<void>) => {
+    const nextKeyword = searchInputs[module]
+    if (keywords[module] === nextKeyword) {
+      void reload(0)
+      return
+    }
+    setKeywords((current) => ({ ...current, [module]: nextKeyword }))
+  }
+
+  const currentModule = activeSection === 'audit' ? auditViewToModule(auditView) : operationView
+
+  const loadOverview = useCallback(async () => {
     try {
-      const [postRes, groupRes, reportRes, challengeRes, fortuneRes, knowledgeRes, officialInfoRes, knowledgeSubmissionRes] = await Promise.all([
-        fetch(`${API_BASE}/api/posts/admin/review-list`),
-        fetch(`${API_BASE}/api/posts/admin/grouped-by-user`),
-        fetch(`${API_BASE}/api/reports/posts/admin`),
-        fetch(`${API_BASE}/api/challenges/admin`),
-        fetch(`${API_BASE}/api/fortune/admin`),
-        fetch(`${API_BASE}/api/knowledge/admin`),
-        fetch(`${API_BASE}/api/official-info/admin`),
-        fetch(`${API_BASE}/api/knowledge/admin/submissions`),
-      ])
-
-      if (!postRes.ok) throw new Error(`动态审核加载失败：HTTP ${postRes.status}`)
-      if (!groupRes.ok) throw new Error(`用户分组加载失败：HTTP ${groupRes.status}`)
-      if (!reportRes.ok) throw new Error(`举报复审加载失败：HTTP ${reportRes.status}`)
-      if (!challengeRes.ok) throw new Error(`挑战管理加载失败：HTTP ${challengeRes.status}`)
-      if (!fortuneRes.ok) throw new Error(`福运卡管理加载失败：HTTP ${fortuneRes.status}`)
-      if (!knowledgeRes.ok) throw new Error(`科普页管理加载失败：HTTP ${knowledgeRes.status}`)
-      if (!officialInfoRes.ok) throw new Error(`官方资讯加载失败：HTTP ${officialInfoRes.status}`)
-      if (!knowledgeSubmissionRes.ok) throw new Error(`科普投稿加载失败：HTTP ${knowledgeSubmissionRes.status}`)
-
-      setPosts(await postRes.json())
-      setGroups(await groupRes.json())
-      setReports(await reportRes.json())
-      setChallenges(await challengeRes.json())
-      setFortuneCards(await fortuneRes.json())
-      setKnowledgeItems(await knowledgeRes.json())
-      setOfficialInfoItems(await officialInfoRes.json())
-      setKnowledgeSubmissions(await knowledgeSubmissionRes.json())
-      setError('')
-      setLastUpdated(new Date())
+      const response = await fetch(`${API_BASE}/api/admin/overview`)
+      if (!response.ok) throw new Error(`待办角标加载失败：HTTP ${response.status}`)
+      setOverview(await response.json())
+      setOverviewUpdatedAt(new Date().toISOString())
+      setOverviewError('')
     } catch (err) {
-      setError(err instanceof Error ? err.message : '加载失败')
-    } finally {
-      setIsLoading(false)
+      setOverviewError(err instanceof Error ? err.message : '待办角标加载失败')
     }
   }, [])
 
-  useEffect(() => {
-    const initialTimer = window.setTimeout(() => void loadData(), 0)
-    const timer = window.setInterval(() => void loadData(), REFRESH_INTERVAL_MS)
-    return () => {
-      window.clearTimeout(initialTimer)
-      window.clearInterval(timer)
+  const loadPage = useCallback(async <T,>(
+    url: string,
+    page: number,
+    setState: Dispatch<SetStateAction<ModuleState<T>>>,
+    label: string,
+  ) => {
+    const refreshing = page === 0
+    setState((current) => ({
+      ...current,
+      isLoading: !current.loaded,
+      isRefreshing: current.loaded && refreshing,
+      error: '',
+    }))
+    try {
+      const response = await fetch(url)
+      if (!response.ok) throw new Error(`${label}加载失败：HTTP ${response.status}`)
+      const data = await response.json() as AdminPageResponse<T>
+      setState({
+        ...data,
+        isLoading: false,
+        isRefreshing: false,
+        error: '',
+        loaded: true,
+        lastUpdated: new Date().toISOString(),
+      })
+    } catch (err) {
+      setState((current) => ({
+        ...current,
+        isLoading: false,
+        isRefreshing: false,
+        error: err instanceof Error ? err.message : `${label}加载失败`,
+        loaded: true,
+      }))
     }
-  }, [loadData])
+  }, [])
+
+  const loadPosts = useCallback((page = 0) => {
+    return loadPage(buildUrl('/api/posts/admin/review-list', {
+      status: postFilter,
+      keyword: keywords.posts,
+      page,
+      size: PAGE_SIZE,
+    }), page, setPosts, '动态审核')
+  }, [keywords.posts, loadPage, postFilter])
+
+  const loadGroups = useCallback((page = 0) => {
+    return loadPage(buildUrl('/api/posts/admin/user-groups', {
+      status: postFilter,
+      keyword: keywords.users,
+      page,
+      size: PAGE_SIZE,
+    }), page, setGroups, '用户分组')
+  }, [keywords.users, loadPage, postFilter])
+
+  const loadGroupPosts = useCallback((userId: number, page = 0) => {
+    const setState: Dispatch<SetStateAction<ModuleState<Post>>> = (updater) => {
+      setGroupPosts((current) => {
+        const previous = current[userId] ?? emptyModuleState<Post>()
+        const next = typeof updater === 'function' ? updater(previous) : updater
+        return { ...current, [userId]: next }
+      })
+    }
+    return loadPage(buildUrl(`/api/posts/admin/user-groups/${userId}/posts`, {
+      status: postFilter,
+      keyword: keywords.users,
+      page,
+      size: PAGE_SIZE,
+    }), page, setState, '用户动态')
+  }, [keywords.users, loadPage, postFilter])
+
+  const loadReports = useCallback((page = 0) => {
+    return loadPage(buildUrl('/api/reports/posts/admin', {
+      reviewStatus: reportFilter,
+      keyword: keywords.reports,
+      page,
+      size: PAGE_SIZE,
+    }), page, setReports, '举报复审')
+  }, [keywords.reports, loadPage, reportFilter])
+
+  const loadSubmissions = useCallback((page = 0) => {
+    return loadPage(buildUrl('/api/knowledge/admin/submissions', {
+      status: knowledgeSubmissionFilter,
+      category: knowledgeSubmissionCategory,
+      keyword: keywords.submissions,
+      page,
+      size: PAGE_SIZE,
+    }), page, setKnowledgeSubmissions, '科普投稿')
+  }, [keywords.submissions, knowledgeSubmissionCategory, knowledgeSubmissionFilter, loadPage])
+
+  const loadChallenges = useCallback((page = 0) => {
+    return loadPage(buildUrl('/api/challenges/admin', {
+      status: challengeFilter,
+      keyword: keywords.challenges,
+      page,
+      size: PAGE_SIZE,
+    }), page, setChallenges, '挑战管理')
+  }, [challengeFilter, keywords.challenges, loadPage])
+
+  const loadFortune = useCallback((page = 0) => {
+    return loadPage(buildUrl('/api/fortune/admin', {
+      keyword: keywords.fortune,
+      fromDate: fortuneFromDate,
+      toDate: fortuneToDate,
+      page,
+      size: PAGE_SIZE,
+    }), page, setFortuneCards, '福运卡管理')
+  }, [fortuneFromDate, fortuneToDate, keywords.fortune, loadPage])
+
+  const loadKnowledge = useCallback((page = 0) => {
+    return loadPage(buildUrl('/api/knowledge/admin', {
+      status: knowledgeFilter,
+      category: knowledgeCategory,
+      sourceType: knowledgeSource,
+      keyword: keywords.knowledge,
+      page,
+      size: PAGE_SIZE,
+    }), page, setKnowledgeItems, '科普页管理')
+  }, [keywords.knowledge, knowledgeCategory, knowledgeFilter, knowledgeSource, loadPage])
+
+  const loadOfficialInfo = useCallback((page = 0) => {
+    return loadPage(buildUrl('/api/official-info/admin', {
+      status: officialInfoFilter,
+      category: officialInfoCategory === '全部' ? 'all' : officialInfoCategory,
+      keyword: keywords.officialInfo,
+      page,
+      size: PAGE_SIZE,
+    }), page, setOfficialInfoItems, '官方资讯')
+  }, [keywords.officialInfo, loadPage, officialInfoCategory, officialInfoFilter])
+
+  const refreshCurrentModule = useCallback((page = 0) => {
+    const loaders: Record<ModuleKey, (page?: number) => Promise<void>> = {
+      posts: loadPosts,
+      users: loadGroups,
+      reports: loadReports,
+      submissions: loadSubmissions,
+      challenges: loadChallenges,
+      fortune: loadFortune,
+      knowledge: loadKnowledge,
+      officialInfo: loadOfficialInfo,
+    }
+    return loaders[currentModule](page)
+  }, [currentModule, loadChallenges, loadFortune, loadGroups, loadKnowledge, loadOfficialInfo, loadPosts, loadReports, loadSubmissions])
+
+  useEffect(() => {
+    void loadOverview()
+    const timer = window.setInterval(() => void loadOverview(), OVERVIEW_REFRESH_INTERVAL_MS)
+    return () => window.clearInterval(timer)
+  }, [loadOverview])
+
+  useEffect(() => {
+    void refreshCurrentModule(0)
+  }, [refreshCurrentModule])
+
+  useEffect(() => {
+    setExpandedUsers(new Set())
+    setGroupPosts({})
+  }, [keywords.users, postFilter])
 
   const reviewPost = async (postId: number, action: 'pass' | 'reject') => {
     const response = await fetch(`${API_BASE}/api/posts/review`, {
@@ -300,7 +553,8 @@ function App() {
       setError('动态审核操作失败')
       return
     }
-    await loadData()
+    setError('')
+    await Promise.all([refreshCurrentModule(), loadOverview()])
   }
 
   const reviewReport = async (
@@ -318,7 +572,8 @@ function App() {
       setError('举报复审操作失败')
       return
     }
-    await loadData()
+    setError('')
+    await Promise.all([loadReports(), loadOverview()])
   }
 
   const saveChallenge = async (challenge: ChallengeFormValue, challengeId?: number) => {
@@ -340,7 +595,8 @@ function App() {
       setError(message || '挑战保存失败')
       return false
     }
-    await loadData()
+    setError('')
+    await Promise.all([loadChallenges(0), loadOverview()])
     return true
   }
 
@@ -359,7 +615,8 @@ function App() {
       setError(message || '福运卡保存失败')
       return false
     }
-    await loadData()
+    setError('')
+    await loadFortune(0)
     return true
   }
 
@@ -377,7 +634,8 @@ function App() {
       setError('科普投稿审核操作失败')
       return
     }
-    await loadData()
+    setError('')
+    await Promise.all([loadSubmissions(), loadOverview()])
   }
 
   const saveKnowledgeItem = async (knowledge: KnowledgeFormValue, knowledgeId?: number) => {
@@ -395,7 +653,8 @@ function App() {
       setError(message || '科普内容保存失败')
       return false
     }
-    await loadData()
+    setError('')
+    await loadKnowledge(0)
     return true
   }
 
@@ -409,7 +668,8 @@ function App() {
       setError('科普内容状态更新失败')
       return
     }
-    await loadData()
+    setError('')
+    await loadKnowledge()
   }
 
   const deleteKnowledgeItem = async (knowledgeId: number) => {
@@ -420,7 +680,8 @@ function App() {
       setError('科普内容删除失败')
       return
     }
-    await loadData()
+    setError('')
+    await loadKnowledge()
   }
 
   const saveOfficialInfoItem = async (info: OfficialInfoFormValue, infoId?: number) => {
@@ -438,7 +699,8 @@ function App() {
       setError(message || '官方资讯保存失败')
       return false
     }
-    await loadData()
+    setError('')
+    await loadOfficialInfo(0)
     return true
   }
 
@@ -452,7 +714,8 @@ function App() {
       setError('官方资讯状态更新失败')
       return
     }
-    await loadData()
+    setError('')
+    await loadOfficialInfo()
   }
 
   const deleteOfficialInfoItem = async (infoId: number) => {
@@ -463,7 +726,8 @@ function App() {
       setError('官方资讯删除失败')
       return
     }
-    await loadData()
+    setError('')
+    await loadOfficialInfo()
   }
 
   const uploadOfficialInfoCover = async (file: File) => {
@@ -482,30 +746,14 @@ function App() {
     return data.url || ''
   }
 
-  const filteredPosts = useMemo(() => posts.filter((post) => matchPostFilter(post, postFilter)), [posts, postFilter])
-  const filteredReports = useMemo(
-    () => reports.filter((report) => reportFilter === 'all' || report.reviewStatus === reportFilter),
-    [reports, reportFilter],
-  )
-  const stats = useMemo(() => {
-    const pendingPosts = posts.filter((post) => post.status === 0).length
-    const pendingReports = reports.filter((report) => report.reviewStatus === 'pending').length
-    const pendingKnowledge = knowledgeSubmissions.filter((item) => item.status === 'PENDING').length
-    return {
-      totalPosts: posts.length,
-      pendingPosts,
-      reviewedPosts: posts.length - pendingPosts,
-      pendingReports,
-      pendingKnowledge,
-      activeChallenges: challenges.filter((item) => item.challenge.status === 'PUBLISHED' && !item.isExpired).length,
-    }
-  }, [posts, reports, challenges, knowledgeSubmissions])
-
   const toggleUser = (userId: number) => {
     setExpandedUsers((current) => {
       const next = new Set(current)
       if (next.has(userId)) next.delete(userId)
-      else next.add(userId)
+      else {
+        next.add(userId)
+        if (!groupPosts[userId]?.loaded) void loadGroupPosts(userId, 0)
+      }
       return next
     })
   }
@@ -525,10 +773,30 @@ function App() {
           <button className={activeSection === 'operations' ? 'active' : ''} onClick={() => setActiveSection('operations')}>运营管理</button>
         </nav>
         <section className="refresh-box">
-          <p>自动刷新</p>
-          <strong>每 30 秒</strong>
-          <span>{lastUpdated ? `上次：${formatTime(lastUpdated.toISOString())}` : '等待首次刷新'}</span>
-          <button onClick={() => void loadData()} disabled={isLoading}>{isLoading ? '刷新中...' : '手动刷新'}</button>
+          <p>角标刷新</p>
+          <strong>每 60 秒</strong>
+          <span>{overviewUpdatedAt ? `角标：${formatTime(overviewUpdatedAt)}` : '等待首次刷新'}</span>
+          <button onClick={() => void refreshCurrentModule(0)} disabled={currentModuleState({
+            posts,
+            users: groups,
+            reports,
+            submissions: knowledgeSubmissions,
+            challenges,
+            fortune: fortuneCards,
+            knowledge: knowledgeItems,
+            officialInfo: officialInfoItems,
+          }, currentModule).isRefreshing}>
+            {currentModuleState({
+              posts,
+              users: groups,
+              reports,
+              submissions: knowledgeSubmissions,
+              challenges,
+              fortune: fortuneCards,
+              knowledge: knowledgeItems,
+              officialInfo: officialInfoItems,
+            }, currentModule).isRefreshing ? '刷新中...' : '刷新当前模块'}
+          </button>
         </section>
       </aside>
 
@@ -539,16 +807,17 @@ function App() {
             <h2>{sectionTitle(activeSection, auditView)}</h2>
           </div>
           <div className="stat-grid" aria-label="审核统计">
-            <StatCard label="动态总数" value={stats.totalPosts} tone="rice" />
-            <StatCard label="未审核动态" value={stats.pendingPosts} tone="red" />
-            <StatCard label="已审核动态" value={stats.reviewedPosts} tone="green" />
-            <StatCard label="未复审举报" value={stats.pendingReports} tone="orange" />
-            <StatCard label="科普投稿" value={stats.pendingKnowledge} tone="red" />
-            <StatCard label="进行中挑战" value={stats.activeChallenges} tone="red" />
+            <StatCard label="动态总数" value={overview.totalPosts} tone="rice" />
+            <StatCard label="未审核动态" value={overview.pendingPosts} tone="red" />
+            <StatCard label="已审核动态" value={overview.reviewedPosts} tone="green" />
+            <StatCard label="未复审举报" value={overview.pendingReports} tone="orange" />
+            <StatCard label="科普投稿" value={overview.pendingKnowledgeSubmissions} tone="red" />
+            <StatCard label="进行中挑战" value={overview.activeChallenges} tone="red" />
           </div>
         </header>
 
         {error && <div className="error-banner">{error}</div>}
+        {overviewError && <div className="error-banner">{overviewError}</div>}
         {activeSection === 'audit' && (
           <AuditCenter
             auditView={auditView}
@@ -557,13 +826,26 @@ function App() {
             setPostFilter={setPostFilter}
             reportFilter={reportFilter}
             setReportFilter={setReportFilter}
-            filteredPosts={filteredPosts}
+            knowledgeSubmissionFilter={knowledgeSubmissionFilter}
+            setKnowledgeSubmissionFilter={setKnowledgeSubmissionFilter}
+            knowledgeSubmissionCategory={knowledgeSubmissionCategory}
+            setKnowledgeSubmissionCategory={setKnowledgeSubmissionCategory}
+            keywords={searchInputs}
+            updateKeyword={updateKeyword}
+            applySearch={applySearch}
+            posts={posts}
             groups={groups}
-            filteredReports={filteredReports}
+            groupPosts={groupPosts}
+            reports={reports}
             knowledgeSubmissions={knowledgeSubmissions}
             expandedUsers={expandedUsers}
             toggleUser={toggleUser}
-            isLoading={isLoading}
+            loadPosts={loadPosts}
+            loadGroups={loadGroups}
+            loadGroupPosts={loadGroupPosts}
+            loadReports={loadReports}
+            loadSubmissions={loadSubmissions}
+            overview={overview}
             reviewPost={reviewPost}
             reviewReport={reviewReport}
             reviewKnowledgeSubmission={reviewKnowledgeSubmission}
@@ -579,6 +861,30 @@ function App() {
               fortuneCards={fortuneCards}
               knowledgeItems={knowledgeItems}
               officialInfoItems={officialInfoItems}
+              challengeFilter={challengeFilter}
+              setChallengeFilter={setChallengeFilter}
+              knowledgeFilter={knowledgeFilter}
+              setKnowledgeFilter={setKnowledgeFilter}
+              knowledgeCategory={knowledgeCategory}
+              setKnowledgeCategory={setKnowledgeCategory}
+              knowledgeSource={knowledgeSource}
+              setKnowledgeSource={setKnowledgeSource}
+              officialInfoFilter={officialInfoFilter}
+              setOfficialInfoFilter={setOfficialInfoFilter}
+              officialInfoCategory={officialInfoCategory}
+              setOfficialInfoCategory={setOfficialInfoCategory}
+              fortuneFromDate={fortuneFromDate}
+              setFortuneFromDate={setFortuneFromDate}
+              fortuneToDate={fortuneToDate}
+              setFortuneToDate={setFortuneToDate}
+              keywords={searchInputs}
+              updateKeyword={updateKeyword}
+              applySearch={applySearch}
+              loadChallenges={loadChallenges}
+              loadFortune={loadFortune}
+              loadKnowledge={loadKnowledge}
+              loadOfficialInfo={loadOfficialInfo}
+              overview={overview}
               onSaveChallenge={saveChallenge}
               onSaveFortuneCard={saveFortuneCard}
               onSaveKnowledgeItem={saveKnowledgeItem}
@@ -603,6 +909,30 @@ function OperationsWorkspace({
   fortuneCards,
   knowledgeItems,
   officialInfoItems,
+  challengeFilter,
+  setChallengeFilter,
+  knowledgeFilter,
+  setKnowledgeFilter,
+  knowledgeCategory,
+  setKnowledgeCategory,
+  knowledgeSource,
+  setKnowledgeSource,
+  officialInfoFilter,
+  setOfficialInfoFilter,
+  officialInfoCategory,
+  setOfficialInfoCategory,
+  fortuneFromDate,
+  setFortuneFromDate,
+  fortuneToDate,
+  setFortuneToDate,
+  keywords,
+  updateKeyword,
+  applySearch,
+  loadChallenges,
+  loadFortune,
+  loadKnowledge,
+  loadOfficialInfo,
+  overview,
   onSaveChallenge,
   onSaveFortuneCard,
   onSaveKnowledgeItem,
@@ -615,10 +945,34 @@ function OperationsWorkspace({
 }: {
   operationView: OperationView
   setOperationView: (value: OperationView) => void
-  challenges: AdminChallenge[]
-  fortuneCards: FortuneCard[]
-  knowledgeItems: KnowledgeItem[]
-  officialInfoItems: OfficialInfoItem[]
+  challenges: ModuleState<AdminChallenge>
+  fortuneCards: ModuleState<FortuneCard>
+  knowledgeItems: ModuleState<KnowledgeItem>
+  officialInfoItems: ModuleState<OfficialInfoItem>
+  challengeFilter: ChallengeFilter
+  setChallengeFilter: (value: ChallengeFilter) => void
+  knowledgeFilter: KnowledgeFilter
+  setKnowledgeFilter: (value: KnowledgeFilter) => void
+  knowledgeCategory: string
+  setKnowledgeCategory: (value: string) => void
+  knowledgeSource: KnowledgeSourceFilter
+  setKnowledgeSource: (value: KnowledgeSourceFilter) => void
+  officialInfoFilter: OfficialInfoFilter
+  setOfficialInfoFilter: (value: OfficialInfoFilter) => void
+  officialInfoCategory: '全部' | OfficialInfoCategory
+  setOfficialInfoCategory: (value: '全部' | OfficialInfoCategory) => void
+  fortuneFromDate: string
+  setFortuneFromDate: (value: string) => void
+  fortuneToDate: string
+  setFortuneToDate: (value: string) => void
+  keywords: Record<ModuleKey, string>
+  updateKeyword: (module: ModuleKey, value: string) => void
+  applySearch: (module: ModuleKey, reload: (page?: number) => Promise<void>) => void
+  loadChallenges: (page?: number) => Promise<void>
+  loadFortune: (page?: number) => Promise<void>
+  loadKnowledge: (page?: number) => Promise<void>
+  loadOfficialInfo: (page?: number) => Promise<void>
+  overview: AdminOverview
   onSaveChallenge: (challenge: ChallengeFormValue, challengeId?: number) => Promise<boolean>
   onSaveFortuneCard: (fortuneCard: FortuneCardFormValue, fortuneCardId?: number) => Promise<boolean>
   onSaveKnowledgeItem: (knowledge: KnowledgeFormValue, knowledgeId?: number) => Promise<boolean>
@@ -630,7 +984,7 @@ function OperationsWorkspace({
   onUploadOfficialInfoCover: (file: File) => Promise<string>
 }) {
   const operationViews: Array<{ key: OperationView; label: string }> = [
-    { key: 'challenges', label: '挑战活动' },
+    { key: 'challenges', label: `挑战活动 ${overview.activeChallenges}` },
     { key: 'fortune', label: '福运卡' },
     { key: 'knowledge', label: '科普页' },
     { key: 'officialInfo', label: '官方资讯' },
@@ -640,27 +994,89 @@ function OperationsWorkspace({
     <section className="operations-stack">
       <SegmentedControl items={operationViews} value={operationView} onChange={setOperationView} />
       {operationView === 'challenges' && (
-        <ChallengeWorkspace challenges={challenges} onSave={onSaveChallenge} />
+        <ModuleFrame
+          state={challenges}
+          keyword={keywords.challenges}
+          keywordPlaceholder="搜索标题、标签、描述"
+          onKeywordChange={(value) => updateKeyword('challenges', value)}
+          onSearch={() => applySearch('challenges', loadChallenges)}
+          onPageChange={(page) => void loadChallenges(page)}
+          extraFilters={<SegmentedControl items={challengeFilters} value={challengeFilter} onChange={setChallengeFilter} />}
+        >
+          <ChallengeWorkspace challenges={challenges.items} onSave={onSaveChallenge} />
+        </ModuleFrame>
       )}
       {operationView === 'fortune' && (
-        <FortuneWorkspace fortuneCards={fortuneCards} onSave={onSaveFortuneCard} />
+        <ModuleFrame
+          state={fortuneCards}
+          keyword={keywords.fortune}
+          keywordPlaceholder="搜索节气、农历、宜做事项"
+          onKeywordChange={(value) => updateKeyword('fortune', value)}
+          onSearch={() => applySearch('fortune', loadFortune)}
+          onPageChange={(page) => void loadFortune(page)}
+          extraFilters={(
+            <>
+              <input type="date" value={fortuneFromDate} onChange={(event) => setFortuneFromDate(event.target.value)} />
+              <input type="date" value={fortuneToDate} onChange={(event) => setFortuneToDate(event.target.value)} />
+            </>
+          )}
+        >
+          <FortuneWorkspace fortuneCards={fortuneCards.items} onSave={onSaveFortuneCard} />
+        </ModuleFrame>
       )}
       {operationView === 'knowledge' && (
-        <KnowledgeWorkspace
-          knowledgeItems={knowledgeItems}
-          onSave={onSaveKnowledgeItem}
-          onUpdateStatus={onUpdateKnowledgeStatus}
-          onDelete={onDeleteKnowledgeItem}
-        />
+        <ModuleFrame
+          state={knowledgeItems}
+          keyword={keywords.knowledge}
+          keywordPlaceholder="搜索标题、正文、题目"
+          onKeywordChange={(value) => updateKeyword('knowledge', value)}
+          onSearch={() => applySearch('knowledge', loadKnowledge)}
+          onPageChange={(page) => void loadKnowledge(page)}
+          extraFilters={(
+            <>
+              <SegmentedControl items={knowledgeFilters} value={knowledgeFilter} onChange={setKnowledgeFilter} />
+              <select value={knowledgeCategory} onChange={(event) => setKnowledgeCategory(event.target.value)}>
+                {['全部', ...knowledgeCategories].map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+              <SegmentedControl items={knowledgeSourceFilters} value={knowledgeSource} onChange={setKnowledgeSource} />
+            </>
+          )}
+        >
+          <KnowledgeWorkspace
+            knowledgeItems={knowledgeItems.items}
+            onSave={onSaveKnowledgeItem}
+            onUpdateStatus={onUpdateKnowledgeStatus}
+            onDelete={onDeleteKnowledgeItem}
+          />
+        </ModuleFrame>
       )}
       {operationView === 'officialInfo' && (
-        <OfficialInfoWorkspace
-          items={officialInfoItems}
-          onSave={onSaveOfficialInfoItem}
-          onUpdateStatus={onUpdateOfficialInfoStatus}
-          onDelete={onDeleteOfficialInfoItem}
-          onUploadCover={onUploadOfficialInfoCover}
-        />
+        <ModuleFrame
+          state={officialInfoItems}
+          keyword={keywords.officialInfo}
+          keywordPlaceholder="搜索标题、摘要、正文"
+          onKeywordChange={(value) => updateKeyword('officialInfo', value)}
+          onSearch={() => applySearch('officialInfo', loadOfficialInfo)}
+          onPageChange={(page) => void loadOfficialInfo(page)}
+          extraFilters={(
+            <>
+              <SegmentedControl items={officialInfoFilters} value={officialInfoFilter} onChange={setOfficialInfoFilter} />
+              <select value={officialInfoCategory} onChange={(event) => setOfficialInfoCategory(event.target.value as '全部' | OfficialInfoCategory)}>
+                {['全部', ...officialInfoCategories.map((category) => category.key)].map((category) => (
+                  <option key={category} value={category}>{category === '全部' ? '全部分类' : officialInfoCategoryLabel(category as OfficialInfoCategory)}</option>
+                ))}
+              </select>
+            </>
+          )}
+        >
+          <OfficialInfoWorkspace
+            items={officialInfoItems.items}
+            onSave={onSaveOfficialInfoItem}
+            onUpdateStatus={onUpdateOfficialInfoStatus}
+            onDelete={onDeleteOfficialInfoItem}
+            onUploadCover={onUploadOfficialInfoCover}
+          />
+        </ModuleFrame>
       )}
     </section>
   )
@@ -673,13 +1089,26 @@ function AuditCenter({
   setPostFilter,
   reportFilter,
   setReportFilter,
-  filteredPosts,
+  knowledgeSubmissionFilter,
+  setKnowledgeSubmissionFilter,
+  knowledgeSubmissionCategory,
+  setKnowledgeSubmissionCategory,
+  keywords,
+  updateKeyword,
+  applySearch,
+  posts,
   groups,
-  filteredReports,
+  groupPosts,
+  reports,
   knowledgeSubmissions,
   expandedUsers,
   toggleUser,
-  isLoading,
+  loadPosts,
+  loadGroups,
+  loadGroupPosts,
+  loadReports,
+  loadSubmissions,
+  overview,
   reviewPost,
   reviewReport,
   reviewKnowledgeSubmission,
@@ -690,22 +1119,35 @@ function AuditCenter({
   setPostFilter: (value: PostFilter) => void
   reportFilter: ReportFilter
   setReportFilter: (value: ReportFilter) => void
-  filteredPosts: Post[]
-  groups: UserGroup[]
-  filteredReports: PostReport[]
-  knowledgeSubmissions: KnowledgeSubmission[]
+  knowledgeSubmissionFilter: KnowledgeSubmissionFilter
+  setKnowledgeSubmissionFilter: (value: KnowledgeSubmissionFilter) => void
+  knowledgeSubmissionCategory: string
+  setKnowledgeSubmissionCategory: (value: string) => void
+  keywords: Record<ModuleKey, string>
+  updateKeyword: (module: ModuleKey, value: string) => void
+  applySearch: (module: ModuleKey, reload: (page?: number) => Promise<void>) => void
+  posts: ModuleState<Post>
+  groups: ModuleState<UserGroup>
+  groupPosts: Record<number, ModuleState<Post>>
+  reports: ModuleState<PostReport>
+  knowledgeSubmissions: ModuleState<KnowledgeSubmission>
   expandedUsers: Set<number>
   toggleUser: (userId: number) => void
-  isLoading: boolean
+  loadPosts: (page?: number) => Promise<void>
+  loadGroups: (page?: number) => Promise<void>
+  loadGroupPosts: (userId: number, page?: number) => Promise<void>
+  loadReports: (page?: number) => Promise<void>
+  loadSubmissions: (page?: number) => Promise<void>
+  overview: AdminOverview
   reviewPost: (postId: number, action: 'pass' | 'reject') => Promise<void>
   reviewReport: (reportId: number, reportResult: ReportResult, postAction: PostAction) => Promise<void>
   reviewKnowledgeSubmission: (submissionId: number, action: 'adopt' | 'reject') => Promise<void>
 }) {
   const auditViews: Array<{ key: AuditView; label: string }> = [
-    { key: 'posts', label: '动态审核' },
+    { key: 'posts', label: `动态审核 ${overview.pendingPosts}` },
     { key: 'users', label: '按用户审核' },
-    { key: 'reports', label: '举报复审' },
-    { key: 'knowledge', label: '科普投稿' },
+    { key: 'reports', label: `举报复审 ${overview.pendingReports}` },
+    { key: 'knowledge', label: `科普投稿 ${overview.pendingKnowledgeSubmissions}` },
   ]
 
   return (
@@ -713,29 +1155,46 @@ function AuditCenter({
       <SegmentedControl items={auditViews} value={auditView} onChange={setAuditView} />
 
       {auditView === 'posts' && (
-        <div className="audit-pane">
-          <SegmentedControl items={postFilters} value={postFilter} onChange={setPostFilter} />
+        <ModuleFrame
+          state={posts}
+          keyword={keywords.posts}
+          keywordPlaceholder="搜索内容、分类、位置、作者"
+          onKeywordChange={(value) => updateKeyword('posts', value)}
+          onSearch={() => applySearch('posts', loadPosts)}
+          onPageChange={(page) => void loadPosts(page)}
+          extraFilters={<SegmentedControl items={postFilters} value={postFilter} onChange={setPostFilter} />}
+        >
           <div className="post-grid">
-            {filteredPosts.map((post) => (
+            {posts.items.map((post) => (
               <PostCard key={post.id} post={post} onReview={reviewPost} />
             ))}
           </div>
-          <EmptyState visible={!isLoading && filteredPosts.length === 0} text="当前筛选下没有动态" />
-        </div>
+          <EmptyState visible={!posts.isLoading && posts.items.length === 0} text="当前筛选下没有动态" />
+        </ModuleFrame>
       )}
 
       {auditView === 'users' && (
-        <div className="audit-pane user-stack">
-          {groups.map((group) => {
+        <ModuleFrame
+          state={groups}
+          keyword={keywords.users}
+          keywordPlaceholder="搜索作者或动态内容"
+          onKeywordChange={(value) => updateKeyword('users', value)}
+          onSearch={() => applySearch('users', loadGroups)}
+          onPageChange={(page) => void loadGroups(page)}
+          extraFilters={<SegmentedControl items={postFilters} value={postFilter} onChange={setPostFilter} />}
+        >
+          <div className="audit-pane user-stack">
+          {groups.items.map((group) => {
             const userId = group.author?.id ?? 0
             const expanded = expandedUsers.has(userId)
+            const postsForUser = groupPosts[userId] ?? emptyModuleState<Post>()
             return (
               <article className="user-bento" key={userId}>
                 <button className="user-head" onClick={() => toggleUser(userId)}>
                   <Avatar user={group.author} />
                   <div>
                     <strong>{displayName(group.author)}</strong>
-                    <span>{group.totalCount} 条动态 · {group.pendingCount} 条未审核</span>
+                    <span>{group.totalCount} 条动态 · {group.pendingCount} 条未审核 · 最近 {formatTime(group.latestPostTime)}</span>
                   </div>
                   <i>{expanded ? '收起' : '展开'}</i>
                 </button>
@@ -745,35 +1204,68 @@ function AuditCenter({
                   <span>已拒绝 {group.rejectedCount}</span>
                 </div>
                 {expanded && (
-                  <div className="post-grid compact">
-                    {group.posts.map((post) => (
-                      <PostCard key={post.id} post={post} onReview={reviewPost} compact />
-                    ))}
-                  </div>
+                  <>
+                    {postsForUser.isLoading && <div className="empty-state">加载用户动态中...</div>}
+                    {postsForUser.error && (
+                      <div className="error-banner">
+                        {postsForUser.error}
+                        <button className="ghost-button" onClick={() => void loadGroupPosts(userId, postsForUser.page)}>重试</button>
+                      </div>
+                    )}
+                    <div className="post-grid compact">
+                      {postsForUser.items.map((post) => (
+                        <PostCard key={post.id} post={post} onReview={reviewPost} compact />
+                      ))}
+                    </div>
+                    <PageControls state={postsForUser} onPageChange={(page) => void loadGroupPosts(userId, page)} />
+                  </>
                 )}
               </article>
             )
           })}
-          <EmptyState visible={!isLoading && groups.length === 0} text="暂无用户动态" />
-        </div>
+          <EmptyState visible={!groups.isLoading && groups.items.length === 0} text="暂无用户动态" />
+          </div>
+        </ModuleFrame>
       )}
 
       {auditView === 'reports' && (
-        <div className="audit-pane">
-          <SegmentedControl items={reportFilters} value={reportFilter} onChange={setReportFilter} />
+        <ModuleFrame
+          state={reports}
+          keyword={keywords.reports}
+          keywordPlaceholder="搜索举报原因、描述、用户、动态"
+          onKeywordChange={(value) => updateKeyword('reports', value)}
+          onSearch={() => applySearch('reports', loadReports)}
+          onPageChange={(page) => void loadReports(page)}
+          extraFilters={<SegmentedControl items={reportFilters} value={reportFilter} onChange={setReportFilter} />}
+        >
           <div className="report-grid">
-            {filteredReports.map((report) => (
+            {reports.items.map((report) => (
               <ReportCard key={report.id} report={report} onReview={reviewReport} />
             ))}
           </div>
-          <EmptyState visible={!isLoading && filteredReports.length === 0} text="当前筛选下没有举报记录" />
-        </div>
+          <EmptyState visible={!reports.isLoading && reports.items.length === 0} text="当前筛选下没有举报记录" />
+        </ModuleFrame>
       )}
 
       {auditView === 'knowledge' && (
-        <div className="audit-pane">
+        <ModuleFrame
+          state={knowledgeSubmissions}
+          keyword={keywords.submissions}
+          keywordPlaceholder="搜索标题、正文、题目、作者"
+          onKeywordChange={(value) => updateKeyword('submissions', value)}
+          onSearch={() => applySearch('submissions', loadSubmissions)}
+          onPageChange={(page) => void loadSubmissions(page)}
+          extraFilters={(
+            <>
+              <SegmentedControl items={knowledgeSubmissionFilters} value={knowledgeSubmissionFilter} onChange={setKnowledgeSubmissionFilter} />
+              <select value={knowledgeSubmissionCategory} onChange={(event) => setKnowledgeSubmissionCategory(event.target.value)}>
+                {['全部', ...knowledgeCategories].map((category) => <option key={category} value={category}>{category}</option>)}
+              </select>
+            </>
+          )}
+        >
           <div className="post-grid">
-            {knowledgeSubmissions.map((submission) => (
+            {knowledgeSubmissions.items.map((submission) => (
               <KnowledgeSubmissionCard
                 key={submission.id}
                 submission={submission}
@@ -781,10 +1273,84 @@ function AuditCenter({
               />
             ))}
           </div>
-          <EmptyState visible={!isLoading && knowledgeSubmissions.length === 0} text="暂无科普投稿" />
-        </div>
+          <EmptyState visible={!knowledgeSubmissions.isLoading && knowledgeSubmissions.items.length === 0} text="暂无科普投稿" />
+        </ModuleFrame>
       )}
     </section>
+  )
+}
+
+function ModuleFrame<T>({
+  state,
+  keyword,
+  keywordPlaceholder,
+  onKeywordChange,
+  onSearch,
+  onPageChange,
+  extraFilters,
+  children,
+}: {
+  state: ModuleState<T>
+  keyword: string
+  keywordPlaceholder: string
+  onKeywordChange: (value: string) => void
+  onSearch: () => void
+  onPageChange: (page: number) => void
+  extraFilters?: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div className="module-frame">
+      <div className="module-toolbar">
+        <div className="module-search">
+          <input
+            value={keyword}
+            onChange={(event) => onKeywordChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') onSearch()
+            }}
+            placeholder={keywordPlaceholder}
+          />
+          <button className="ghost-button" onClick={onSearch}>搜索</button>
+        </div>
+        <div className="module-filters">{extraFilters}</div>
+      </div>
+      <div className="module-meta">
+        <span>共 {state.totalElements} 条</span>
+        <span>{state.lastUpdated ? `更新：${formatTime(state.lastUpdated)}` : '尚未加载'}</span>
+      </div>
+      {state.error && (
+        <div className="error-banner">
+          {state.error}
+          <button className="ghost-button" onClick={() => onPageChange(state.page)}>重试</button>
+        </div>
+      )}
+      {state.isLoading && <div className="empty-state">加载中...</div>}
+      {!state.isLoading && children}
+      <PageControls state={state} onPageChange={onPageChange} />
+    </div>
+  )
+}
+
+function PageControls<T>({
+  state,
+  onPageChange,
+}: {
+  state: ModuleState<T>
+  onPageChange: (page: number) => void
+}) {
+  if (!state.loaded || state.totalPages <= 1) return null
+  const currentPage = state.page + 1
+  return (
+    <div className="pagination-bar">
+      <button className="ghost-button" disabled={state.page <= 0 || state.isRefreshing} onClick={() => onPageChange(state.page - 1)}>
+        上一页
+      </button>
+      <span>第 {currentPage} / {state.totalPages} 页</span>
+      <button className="ghost-button" disabled={!state.hasMore || state.isRefreshing} onClick={() => onPageChange(state.page + 1)}>
+        下一页
+      </button>
+    </div>
   )
 }
 
@@ -1153,15 +1719,7 @@ function KnowledgeWorkspace({
 }) {
   const [editing, setEditing] = useState<KnowledgeItem | null>(null)
   const [form, setForm] = useState<KnowledgeFormValue>(() => emptyKnowledgeForm())
-  const [filter, setFilter] = useState<KnowledgeFilter>('all')
-  const [categoryFilter, setCategoryFilter] = useState('全部')
   const [isSaving, setIsSaving] = useState(false)
-
-  const filteredKnowledge = knowledgeItems.filter((item) => {
-    const statusMatches = filter === 'all' || item.status === filter
-    const categoryMatches = categoryFilter === '全部' || item.category === categoryFilter
-    return statusMatches && categoryMatches
-  })
 
   const startEdit = (item: KnowledgeItem) => {
     setEditing(item)
@@ -1197,16 +1755,8 @@ function KnowledgeWorkspace({
       </div>
 
       <div className="knowledge-list-pane">
-        <div className="knowledge-filters">
-          <SegmentedControl items={knowledgeFilters} value={filter} onChange={setFilter} />
-          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
-            {['全部', ...knowledgeCategories].map((category) => (
-              <option key={category} value={category}>{category}</option>
-            ))}
-          </select>
-        </div>
         <div className="knowledge-list">
-          {filteredKnowledge.map((item) => (
+          {knowledgeItems.map((item) => (
             <KnowledgeAdminCard
               key={item.id}
               item={item}
@@ -1218,7 +1768,7 @@ function KnowledgeWorkspace({
             />
           ))}
         </div>
-        <EmptyState visible={filteredKnowledge.length === 0} text="当前筛选下没有科普内容" />
+        <EmptyState visible={knowledgeItems.length === 0} text="当前筛选下没有科普内容" />
       </div>
     </div>
   )
@@ -1340,16 +1890,8 @@ function OfficialInfoWorkspace({
 }) {
   const [editing, setEditing] = useState<OfficialInfoItem | null>(null)
   const [form, setForm] = useState<OfficialInfoFormValue>(() => emptyOfficialInfoForm())
-  const [filter, setFilter] = useState<OfficialInfoFilter>('all')
-  const [categoryFilter, setCategoryFilter] = useState<'全部' | OfficialInfoCategory>('全部')
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
-
-  const filteredItems = items.filter((item) => {
-    const statusMatches = filter === 'all' || item.status === filter
-    const categoryMatches = categoryFilter === '全部' || item.category === categoryFilter
-    return statusMatches && categoryMatches
-  })
 
   const startEdit = (item: OfficialInfoItem) => {
     setEditing(item)
@@ -1397,16 +1939,8 @@ function OfficialInfoWorkspace({
       </div>
 
       <div className="knowledge-list-pane">
-        <div className="knowledge-filters">
-          <SegmentedControl items={officialInfoFilters} value={filter} onChange={setFilter} />
-          <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as '全部' | OfficialInfoCategory)}>
-            {['全部', ...officialInfoCategories.map((category) => category.key)].map((category) => (
-              <option key={category} value={category}>{category === '全部' ? '全部分类' : officialInfoCategoryLabel(category as OfficialInfoCategory)}</option>
-            ))}
-          </select>
-        </div>
         <div className="knowledge-list">
-          {filteredItems.map((item) => (
+          {items.map((item) => (
             <OfficialInfoAdminCard
               key={item.id}
               item={item}
@@ -1418,7 +1952,7 @@ function OfficialInfoWorkspace({
             />
           ))}
         </div>
-        <EmptyState visible={filteredItems.length === 0} text="当前筛选下没有官方资讯" />
+        <EmptyState visible={items.length === 0} text="当前筛选下没有官方资讯" />
       </div>
     </div>
   )
@@ -1618,6 +2152,28 @@ function EmptyState({ visible, text }: { visible: boolean; text: string }) {
   return <div className="empty-state">{text}</div>
 }
 
+function buildUrl(path: string, params: Record<string, string | number | undefined | null>) {
+  const query = new URLSearchParams()
+  Object.entries(params).forEach(([key, value]) => {
+    if (value === undefined || value === null || value === '') return
+    query.set(key, String(value))
+  })
+  const suffix = query.toString()
+  return `${API_BASE}${path}${suffix ? `?${suffix}` : ''}`
+}
+
+function auditViewToModule(view: AuditView): ModuleKey {
+  if (view === 'knowledge') return 'submissions'
+  return view
+}
+
+function currentModuleState(
+  states: Record<ModuleKey, ModuleState<unknown>>,
+  module: ModuleKey,
+) {
+  return states[module]
+}
+
 function getPostImageUrls(post: Post) {
   const rawUrls = post.imageUrls || post.imageUrl || ''
   return rawUrls
@@ -1633,13 +2189,6 @@ function getFullImageUrl(imageUrl: string) {
   if (safeUrl.startsWith('http://') || safeUrl.startsWith('https://')) return safeUrl
   if (safeUrl.startsWith('/')) return `${API_BASE}${safeUrl}`
   return `${API_BASE}/${safeUrl}`
-}
-
-function matchPostFilter(post: Post, filter: PostFilter) {
-  if (filter === 'pending') return post.status === 0
-  if (filter === 'approved') return post.status === 1
-  if (filter === 'rejected') return post.status === 2
-  return true
 }
 
 function displayName(user?: User | null) {
