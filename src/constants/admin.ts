@@ -10,6 +10,7 @@ import type {
   ReportFilter,
   ReportKind,
 } from '../types/admin'
+import type { FortuneCardStatus } from '../types/admin'
 
 export const PAGE_SIZE = 20
 export const OVERVIEW_REFRESH_INTERVAL_MS = 60_000
@@ -63,6 +64,12 @@ export const challengeFilters: Array<{ key: ChallengeFilter; label: string }> = 
   { key: 'DRAFT', label: '草稿' },
   { key: 'PUBLISHED', label: '已发布' },
   { key: 'ARCHIVED', label: '已归档' },
+]
+
+export const fortuneFilters: Array<{ key: 'all' | FortuneCardStatus; label: string }> = [
+  { key: 'all', label: '全部福运卡' },
+  { key: 'PUBLISHED', label: '展示中' },
+  { key: 'ARCHIVED', label: '已下架' },
 ]
 
 export const knowledgeSourceFilters: Array<{ key: KnowledgeSourceFilter; label: string }> = [

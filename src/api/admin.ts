@@ -9,6 +9,7 @@ import type {
   CommentReport,
   FortuneCard,
   FortuneCardFormValue,
+  FortuneCardStatus,
   KnowledgeFilter,
   KnowledgeFormValue,
   KnowledgeItem,
@@ -115,8 +116,9 @@ export function fetchChallenges(params: { status: ChallengeFilter; keyword: stri
   }), '挑战管理加载')
 }
 
-export function fetchFortuneCards(params: { keyword: string; fromDate: string; toDate: string; page?: number; size?: number }) {
+export function fetchFortuneCards(params: { status: 'all' | FortuneCardStatus; keyword: string; fromDate: string; toDate: string; page?: number; size?: number }) {
   return requestUrl<AdminPageResponse<FortuneCard>>(buildUrl('/api/fortune/admin', {
+    status: params.status,
     keyword: params.keyword,
     fromDate: params.fromDate,
     toDate: params.toDate,
@@ -187,6 +189,17 @@ export function saveChallenge(challenge: ChallengeFormValue, challengeId?: numbe
   }, '挑战保存')
 }
 
+export function updateChallengeStatus(challengeId: number, status: ChallengeFormValue['status']) {
+  return request<void>(`/api/challenges/admin/${challengeId}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  }, '挑战状态更新')
+}
+
+export function deleteChallenge(challengeId: number) {
+  return request<void>(`/api/challenges/admin/${challengeId}`, { method: 'DELETE' }, '挑战删除')
+}
+
 export function saveBanner(banner: OperationBannerFormValue, bannerId?: number) {
   return request<void>(bannerId ? `/api/operation-banners/admin/${bannerId}` : '/api/operation-banners/admin', {
     method: bannerId ? 'PUT' : 'POST',
@@ -210,6 +223,17 @@ export function saveFortuneCard(fortuneCard: FortuneCardFormValue, fortuneCardId
     method: fortuneCardId ? 'PUT' : 'POST',
     body: JSON.stringify(fortuneCard),
   }, '福运卡保存')
+}
+
+export function updateFortuneCardStatus(fortuneCardId: number, status: FortuneCardStatus) {
+  return request<void>(`/api/fortune/admin/${fortuneCardId}/status`, {
+    method: 'POST',
+    body: JSON.stringify({ status }),
+  }, '福运卡状态更新')
+}
+
+export function deleteFortuneCard(fortuneCardId: number) {
+  return request<void>(`/api/fortune/admin/${fortuneCardId}`, { method: 'DELETE' }, '福运卡删除')
 }
 
 export function reviewKnowledgeSubmission(submissionId: number, action: 'adopt' | 'reject') {

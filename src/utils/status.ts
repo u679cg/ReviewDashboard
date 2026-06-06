@@ -2,6 +2,7 @@ import { officialInfoCategories } from '../constants/admin'
 import type {
   AdminChallenge,
   KnowledgeStatus,
+  FortuneCardStatus,
   OfficialInfoCategory,
   OfficialInfoStatus,
 } from '../types/admin'
@@ -15,6 +16,10 @@ export function nextKnowledgeStatus(status: KnowledgeStatus): KnowledgeStatus {
 }
 
 export function nextOfficialInfoStatus(status: OfficialInfoStatus): OfficialInfoStatus {
+  return status === 'PUBLISHED' ? 'ARCHIVED' : 'PUBLISHED'
+}
+
+export function nextFortuneCardStatus(status: FortuneCardStatus): FortuneCardStatus {
   return status === 'PUBLISHED' ? 'ARCHIVED' : 'PUBLISHED'
 }
 

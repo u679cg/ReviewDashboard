@@ -3,6 +3,7 @@ import { bannerPlacements } from '../../constants/admin'
 import type {
   AdminChallenge,
   FortuneCard,
+  FortuneCardStatus,
   KnowledgeItem,
   OfficialInfoItem,
   OperationBanner,
@@ -47,7 +48,17 @@ export function BannerCard({
   )
 }
 
-export function ChallengeCard({ item, onEdit }: { item: AdminChallenge; onEdit: () => void }) {
+export function ChallengeCard({
+  item,
+  onEdit,
+  onArchive,
+  onDelete,
+}: {
+  item: AdminChallenge
+  onEdit: () => void
+  onArchive: () => void
+  onDelete: () => void
+}) {
   const challenge = item.challenge
   const images = challenge.inspirationImageUrls
     .split(',')
@@ -77,18 +88,38 @@ export function ChallengeCard({ item, onEdit }: { item: AdminChallenge; onEdit: 
           {images.length > 0 ? images.map((url) => <img key={url} src={url} alt="" referrerPolicy="no-referrer" />) : <span>无素材</span>}
         </div>
       </div>
-      <Button className="ghost-button" onClick={onEdit}>编辑</Button>
+      <div className="knowledge-admin-actions">
+        <Button className="ghost-button" onClick={onEdit}>编辑</Button>
+        <Popconfirm title="确认下架这个挑战活动？Android 端会立即不再同步展示。" okText="下架" cancelText="取消" onConfirm={onArchive}>
+          <Button className="ghost-button" disabled={challenge.status === 'ARCHIVED'}>下架</Button>
+        </Popconfirm>
+        <Popconfirm title="确认删除这个挑战活动？相关尝试和参与记录也会清理。" okText="删除" cancelText="取消" onConfirm={onDelete}>
+          <Button className="ghost-button danger">删除</Button>
+        </Popconfirm>
+      </div>
     </article>
   )
 }
 
-export function FortuneCardItem({ item, onEdit }: { item: FortuneCard; onEdit: () => void }) {
+export function FortuneCardItem({
+  item,
+  onEdit,
+  onToggleStatus,
+  onDelete,
+}: {
+  item: FortuneCard
+  onEdit: () => void
+  onToggleStatus: (status: FortuneCardStatus) => void
+  onDelete: () => void
+}) {
   const image = getFullImageUrl(item.patternImageUrl)
 
   return (
     <article className="fortune-card">
       <div className="card-topline">
-        <span className="status-badge approved">{item.displayDate}</span>
+        <span className={`status-badge ${item.status === 'PUBLISHED' ? 'approved' : 'rejected'}`}>
+          {item.status === 'PUBLISHED' ? '展示中' : '已下架'}
+        </span>
         <time>展示日期</time>
       </div>
       <div className="fortune-card-body">
@@ -101,7 +132,20 @@ export function FortuneCardItem({ item, onEdit }: { item: FortuneCard; onEdit: (
           <p>宜：{item.suitableEvents}</p>
         </div>
       </div>
-      <Button className="ghost-button" onClick={onEdit}>编辑</Button>
+      <div className="knowledge-admin-actions">
+        <Button className="ghost-button" onClick={onEdit}>编辑</Button>
+        <Popconfirm
+          title={item.status === 'PUBLISHED' ? '确认下架这张福运卡？Android 端会立即不再同步展示。' : '确认重新发布这张福运卡？'}
+          okText={item.status === 'PUBLISHED' ? '下架' : '发布'}
+          cancelText="取消"
+          onConfirm={() => onToggleStatus(item.status === 'PUBLISHED' ? 'ARCHIVED' : 'PUBLISHED')}
+        >
+          <Button className="ghost-button">{item.status === 'PUBLISHED' ? '下架' : '发布'}</Button>
+        </Popconfirm>
+        <Popconfirm title="确认删除这张福运卡？相关收藏记录也会清理。" okText="删除" cancelText="取消" onConfirm={onDelete}>
+          <Button className="ghost-button danger">删除</Button>
+        </Popconfirm>
+      </div>
     </article>
   )
 }

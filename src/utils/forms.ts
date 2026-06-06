@@ -65,6 +65,7 @@ export function emptyFortuneCardForm(): FortuneCardFormValue {
     lunarDate: '',
     solarTerm: '',
     suitableEvents: '',
+    status: 'PUBLISHED',
   }
 }
 
@@ -75,6 +76,7 @@ export function fortuneCardToForm(fortuneCard: FortuneCard): FortuneCardFormValu
     lunarDate: fortuneCard.lunarDate,
     solarTerm: fortuneCard.solarTerm,
     suitableEvents: fortuneCard.suitableEvents,
+    status: fortuneCard.status,
   }
 }
 

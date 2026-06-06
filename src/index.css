@@ -39,6 +39,11 @@ textarea {
   letter-spacing: 0;
 }
 
+textarea,
+.ant-input {
+  resize: none;
+}
+
 button:focus-visible,
 select:focus-visible {
   outline: 3px solid rgba(176, 38, 33, 0.28);

@@ -7,6 +7,7 @@ export type PostAction = 'keep' | 'reject' | 'approve'
 export type CommentAction = 'keep' | 'delete'
 export type ReportKind = 'posts' | 'comments'
 export type ChallengeStatus = 'DRAFT' | 'PUBLISHED' | 'ARCHIVED'
+export type FortuneCardStatus = 'PUBLISHED' | 'ARCHIVED'
 
 export type User = {
   id: number
@@ -128,6 +129,7 @@ export type FortuneCard = {
   lunarDate: string
   solarTerm: string
   suitableEvents: string
+  status: FortuneCardStatus
 }
 
 export type FortuneCardFormValue = {
@@ -136,6 +138,7 @@ export type FortuneCardFormValue = {
   lunarDate: string
   solarTerm: string
   suitableEvents: string
+  status: FortuneCardStatus
 }
 
 export type KnowledgeSubmission = {

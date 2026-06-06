@@ -1,7 +1,7 @@
 import { Button, Card, DatePicker, Empty, Form, Input, Segmented, Select, message } from 'antd'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
-import { fetchChallenges, saveChallenge, uploadAdminImage } from '../../api/admin'
+import { deleteChallenge, fetchChallenges, saveChallenge, updateChallengeStatus, uploadAdminImage } from '../../api/admin'
 import { challengeFilters } from '../../constants/admin'
 import { ModuleFrame } from '../../components/ModuleFrame'
 import { ImageUploadField } from '../../components/media/ImageUploadField'
@@ -89,6 +89,26 @@ export function ChallengesPage() {
     }
   }
 
+  const archiveChallenge = async (item: AdminChallenge) => {
+    try {
+      await updateChallengeStatus(item.challenge.id, 'ARCHIVED')
+      messageApi.success('挑战活动已下架，Android 端将不再同步展示')
+      await Promise.all([load(state.page), refreshOverview()])
+    } catch (err) {
+      messageApi.error(err instanceof Error ? err.message : '挑战下架失败')
+    }
+  }
+
+  const removeChallenge = async (item: AdminChallenge) => {
+    try {
+      await deleteChallenge(item.challenge.id)
+      messageApi.success('挑战活动已删除')
+      await Promise.all([load(state.page), refreshOverview()])
+    } catch (err) {
+      messageApi.error(err instanceof Error ? err.message : '挑战删除失败')
+    }
+  }
+
   return (
     <>
       {contextHolder}
@@ -133,7 +153,15 @@ export function ChallengesPage() {
             </Form>
           </Card>
           <div className="challenge-list">
-            {state.items.map((item) => <ChallengeCard key={item.challenge.id} item={item} onEdit={() => startEdit(item)} />)}
+            {state.items.map((item) => (
+              <ChallengeCard
+                key={item.challenge.id}
+                item={item}
+                onEdit={() => startEdit(item)}
+                onArchive={() => void archiveChallenge(item)}
+                onDelete={() => void removeChallenge(item)}
+              />
+            ))}
           </div>
           {state.items.length === 0 && <Empty description="暂无挑战活动" />}
         </div>
