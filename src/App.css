@@ -1,9 +1,8 @@
-.dashboard-shell {
+.antd-dashboard-shell {
   min-height: 100svh;
-  display: grid;
-  grid-template-columns: 280px minmax(0, 1fr);
   gap: 18px;
   padding: 18px;
+  background: transparent;
 }
 
 .sidebar,
@@ -33,6 +32,10 @@
   display: flex;
   flex-direction: column;
   gap: 18px;
+}
+
+.sidebar.ant-layout-sider {
+  background: var(--surface);
 }
 
 .brand-box {
@@ -80,11 +83,10 @@ h2 {
 }
 
 .nav-stack {
-  display: grid;
-  gap: 10px;
+  border: 0 !important;
+  background: transparent !important;
 }
 
-.nav-stack button,
 .segmented button,
 .refresh-box button,
 .card-actions button,
@@ -94,20 +96,16 @@ h2 {
   cursor: pointer;
 }
 
-.nav-stack button {
-  border: 0;
-  border-radius: 18px;
-  padding: 14px 16px;
-  text-align: left;
+.nav-stack .ant-menu-item,
+.nav-stack .ant-menu-submenu-title {
+  border-radius: 16px;
   color: var(--brown);
-  background: transparent;
   font-weight: 800;
 }
 
-.nav-stack button.active {
+.nav-stack .ant-menu-item-selected {
   color: var(--red);
   background: var(--rice);
-  box-shadow: inset 0 0 0 1px var(--line);
 }
 
 .refresh-box {
@@ -146,6 +144,12 @@ h2 {
   min-width: 0;
   border-radius: 34px;
   padding: 22px;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(255, 251, 247, 0.96)),
+    var(--surface);
+}
+
+.content-panel.ant-layout-content {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(255, 251, 247, 0.96)),
     var(--surface);
@@ -228,6 +232,11 @@ h2 {
   gap: 14px;
 }
 
+.antd-module-frame .ant-card-body {
+  display: grid;
+  gap: 14px;
+}
+
 .module-toolbar {
   display: grid;
   grid-template-columns: minmax(240px, 0.8fr) minmax(280px, 1.2fr);
@@ -242,13 +251,10 @@ h2 {
 
 .module-search input,
 .module-filters input,
-.module-filters select {
+.module-filters select,
+.module-filters .ant-select,
+.module-filters .ant-picker {
   min-width: 0;
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  background: #fff;
-  color: var(--ink);
-  padding: 10px 12px;
   font: inherit;
 }
 
@@ -278,6 +284,7 @@ h2 {
 
 .pagination-bar {
   justify-content: center;
+  width: 100%;
 }
 
 .segmented {
