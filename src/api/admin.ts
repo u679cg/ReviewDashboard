@@ -288,3 +288,10 @@ export async function uploadAdminImage(file: File) {
   const data = await uploadForm<{ url?: string }>('/api/admin/uploads/images', formData, '图片上传')
   return data.url || ''
 }
+
+export async function uploadAdminVideo(file: File) {
+  const formData = new FormData()
+  formData.append('video', file)
+  const data = await uploadForm<{ url?: string }>('/api/admin/uploads/videos', formData, '视频上传')
+  return data.url || ''
+}

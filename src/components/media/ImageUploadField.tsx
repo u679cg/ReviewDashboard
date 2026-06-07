@@ -36,8 +36,15 @@ export function ImageUploadField({
         listType="picture-card"
         fileList={fileList}
         beforeUpload={(file, files) => {
-          if (multiple) onChooseFiles?.(files as File[])
-          else onChooseFile?.(file as File)
+          if (multiple) {
+            const currentFile = file as File & { uid?: string }
+            const firstFile = files[0] as File & { uid?: string }
+            if (!firstFile?.uid || currentFile.uid === firstFile.uid) {
+              onChooseFiles?.(files as File[])
+            }
+          } else {
+            onChooseFile?.(file as File)
+          }
           return Upload.LIST_IGNORE
         }}
         onRemove={(file) => {

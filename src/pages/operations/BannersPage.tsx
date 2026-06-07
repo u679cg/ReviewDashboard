@@ -19,6 +19,7 @@ export function BannersPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
   const [cropRequest, setCropRequest] = useState<CropRequest | null>(null)
+  const [pendingImage, setPendingImage] = useState<{ file: File; previewUrl: string } | null>(null)
   const loader = useCallback((page: number) => fetchBanners({ placement, page }), [placement])
   const { state, load } = useAdminPage(loader, 'Banner管理')
   const formValue = Form.useWatch([], form) ?? emptyBannerForm()
@@ -35,11 +36,15 @@ export function BannersPage() {
   useRegisterModuleRefresh(useCallback(() => load(0), [load]))
 
   const resetForm = () => {
+    if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl)
+    setPendingImage(null)
     setEditing(null)
     form.setFieldsValue(emptyBannerForm())
   }
 
   const startEdit = (item: OperationBanner) => {
+    if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl)
+    setPendingImage(null)
     setEditing(item)
     form.setFieldsValue(operationBannerToForm(item))
   }
@@ -49,16 +54,11 @@ export function BannersPage() {
       file,
       aspectRatio: selectedPlacement.aspectRatio,
       title: `${selectedPlacement.label} · ${selectedPlacement.ratioLabel}`,
-      onDone: async (croppedFile) => {
-        setIsUploading(true)
-        try {
-          const url = await uploadAdminImage(croppedFile)
-          if (url) form.setFieldsValue({ imageUrl: url })
-        } catch (err) {
-          messageApi.error(err instanceof Error ? err.message : '图片上传失败')
-        } finally {
-          setIsUploading(false)
-        }
+      onDone: (croppedFile) => {
+        if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl)
+        const previewUrl = URL.createObjectURL(croppedFile)
+        setPendingImage({ file: croppedFile, previewUrl })
+        form.setFieldsValue({ imageUrl: previewUrl })
       },
     })
   }
@@ -66,13 +66,19 @@ export function BannersPage() {
   const submit = async (values: OperationBannerFormValue) => {
     setIsSaving(true)
     try {
-      await saveBanner(values, editing?.id)
+      let imageUrl = values.imageUrl
+      if (pendingImage && values.imageUrl === pendingImage.previewUrl) {
+        setIsUploading(true)
+        imageUrl = await uploadAdminImage(pendingImage.file)
+      }
+      await saveBanner({ ...values, imageUrl }, editing?.id)
       messageApi.success(editing ? 'Banner已保存' : 'Banner已新增')
       resetForm()
       await load(0)
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : 'Banner保存失败')
     } finally {
+      setIsUploading(false)
       setIsSaving(false)
     }
   }
@@ -126,7 +132,11 @@ export function BannersPage() {
                     imageUrls={formValue.imageUrl || ''}
                     isUploading={isUploading}
                     onChooseFile={uploadCroppedBanner}
-                    onRemove={() => form.setFieldsValue({ imageUrl: '' })}
+                    onRemove={() => {
+                      if (pendingImage) URL.revokeObjectURL(pendingImage.previewUrl)
+                      setPendingImage(null)
+                      form.setFieldsValue({ imageUrl: '' })
+                    }}
                   />
                 </Form.Item>
               </div>

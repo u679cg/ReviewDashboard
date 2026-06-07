@@ -28,6 +28,7 @@ export function ChallengesPage() {
   const [editing, setEditing] = useState<AdminChallenge | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [pendingImages, setPendingImages] = useState<Array<{ file: File; previewUrl: string }>>([])
   const loader = useCallback((page: number) => fetchChallenges({ status, keyword, page }), [keyword, status])
   const { state, load } = useAdminPage(loader, '挑战管理')
   const imageUrls = Form.useWatch('inspirationImageUrls', form) || ''
@@ -43,39 +44,53 @@ export function ChallengesPage() {
   useRegisterModuleRefresh(useCallback(() => load(0), [load]))
 
   const resetForm = () => {
+    pendingImages.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+    setPendingImages([])
     setEditing(null)
     form.setFieldsValue(challengeFormToEditor(emptyChallengeForm()))
   }
 
   const startEdit = (item: AdminChallenge) => {
+    pendingImages.forEach((pending) => URL.revokeObjectURL(pending.previewUrl))
+    setPendingImages([])
     setEditing(item)
     form.setFieldsValue(challengeFormToEditor(challengeToForm(item.challenge)))
   }
 
-  const uploadImages = async (files: File[]) => {
-    const fileArray = files.slice(0, 6)
+  const chooseImages = (files: File[]) => {
+    const existingUrls = splitImageUrls(imageUrls)
+    const remaining = 6 - existingUrls.length
+    const fileArray = files.slice(0, Math.max(remaining, 0))
     if (fileArray.length === 0) return
-    setIsUploading(true)
-    try {
-      const uploadedUrls: string[] = []
-      for (const file of fileArray) {
-        const url = await uploadAdminImage(file)
-        if (url) uploadedUrls.push(url)
-      }
-      const existingUrls = splitImageUrls(imageUrls)
-      form.setFieldsValue({ inspirationImageUrls: [...existingUrls, ...uploadedUrls].slice(0, 6).join(',') })
-    } catch (err) {
-      messageApi.error(err instanceof Error ? err.message : '图片上传失败')
-    } finally {
-      setIsUploading(false)
-    }
+    const nextPending = fileArray.map((file) => ({ file, previewUrl: URL.createObjectURL(file) }))
+    setPendingImages((current) => [...current, ...nextPending])
+    form.setFieldsValue({ inspirationImageUrls: [...existingUrls, ...nextPending.map((item) => item.previewUrl)].slice(0, 6).join(',') })
+  }
+
+  const removeImage = (url: string) => {
+    const removedPending = pendingImages.find((item) => item.previewUrl === url)
+    if (removedPending) URL.revokeObjectURL(removedPending.previewUrl)
+    setPendingImages((current) => current.filter((item) => item.previewUrl !== url))
+    form.setFieldsValue({ inspirationImageUrls: splitImageUrls(imageUrls).filter((item) => item !== url).join(',') })
   }
 
   const submit = async (values: ChallengeEditorValue) => {
     setIsSaving(true)
     try {
+      const pendingByPreview = new Map(pendingImages.map((item) => [item.previewUrl, item.file]))
+      const finalImageUrls: string[] = []
+      for (const url of splitImageUrls(values.inspirationImageUrls)) {
+        const pendingFile = pendingByPreview.get(url)
+        if (pendingFile) {
+          setIsUploading(true)
+          finalImageUrls.push(await uploadAdminImage(pendingFile))
+        } else {
+          finalImageUrls.push(url)
+        }
+      }
       await saveChallenge({
         ...values,
+        inspirationImageUrls: finalImageUrls.filter(Boolean).join(','),
         startTime: values.startTime.format('YYYY-MM-DDTHH:mm:ss'),
         deadline: values.deadline.format('YYYY-MM-DDTHH:mm:ss'),
       }, editing?.challenge.id)
@@ -85,6 +100,7 @@ export function ChallengesPage() {
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : '挑战保存失败')
     } finally {
+      setIsUploading(false)
       setIsSaving(false)
     }
   }
@@ -143,8 +159,8 @@ export function ChallengesPage() {
                     imageUrls={imageUrls}
                     multiple
                     isUploading={isUploading}
-                    onChooseFiles={(files) => void uploadImages(files)}
-                    onRemove={(url) => form.setFieldsValue({ inspirationImageUrls: splitImageUrls(imageUrls).filter((item) => item !== url).join(',') })}
+                    onChooseFiles={chooseImages}
+                    onRemove={removeImage}
                   />
                 </Form.Item>
                 <Form.Item name="description" label="主题介绍" className="span-2"><Input.TextArea rows={4} /></Form.Item>

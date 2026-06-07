@@ -215,7 +215,7 @@ export function OfficialInfoAdminCard({
       <p className="eyebrow">{officialInfoCategoryLabel(item.category)} · 排序 {item.sortOrder}</p>
       <h3>{item.title}</h3>
       <p>{item.summary || '暂无摘要'}</p>
-      {item.videoUrl && <div className="knowledge-question"><strong>视频链接</strong><span>{item.videoUrl}</span></div>}
+      {item.videoUrl && <div className="knowledge-question"><strong>视频文件</strong><span>{item.videoUrl}</span></div>}
       <div className="knowledge-admin-actions">
         <Button className="ghost-button" onClick={onEdit}>编辑</Button>
         <Button className="ghost-button" onClick={onToggleStatus}>{item.status === 'PUBLISHED' ? '下架' : '发布'}</Button>

@@ -1,10 +1,11 @@
 import { Button, Card, DatePicker, Empty, Form, Input, InputNumber, Segmented, Select, message } from 'antd'
 import dayjs from 'dayjs'
 import { useCallback, useEffect, useState } from 'react'
-import { deleteOfficialInfoItem, fetchOfficialInfoItems, saveOfficialInfoItem, updateOfficialInfoStatus, uploadAdminImage } from '../../api/admin'
+import { deleteOfficialInfoItem, fetchOfficialInfoItems, saveOfficialInfoItem, updateOfficialInfoStatus, uploadAdminImage, uploadAdminVideo } from '../../api/admin'
 import { officialInfoCategories, officialInfoFilters } from '../../constants/admin'
 import { ModuleFrame } from '../../components/ModuleFrame'
 import { ImageUploadField } from '../../components/media/ImageUploadField'
+import { VideoUploadField } from '../../components/media/VideoUploadField'
 import { OfficialInfoAdminCard } from '../../components/operations/OperationCards'
 import { useAdminPage } from '../../hooks/useAdminPage'
 import { useRegisterModuleRefresh } from '../../hooks/useRegisterModuleRefresh'
@@ -26,9 +27,12 @@ export function OfficialInfoPage() {
   const [editing, setEditing] = useState<OfficialInfoItem | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [pendingCover, setPendingCover] = useState<{ file: File; previewUrl: string } | null>(null)
+  const [pendingVideo, setPendingVideo] = useState<{ file: File; previewUrl: string } | null>(null)
   const loader = useCallback((page: number) => fetchOfficialInfoItems({ status, category, keyword, page }), [category, keyword, status])
   const { state, load } = useAdminPage(loader, '官方资讯')
   const coverImageUrl = Form.useWatch('coverImageUrl', form) || ''
+  const videoUrl = Form.useWatch('videoUrl', form) || ''
 
   useEffect(() => {
     form.setFieldsValue(officialInfoFormToEditor(emptyOfficialInfoForm()))
@@ -41,37 +45,63 @@ export function OfficialInfoPage() {
   useRegisterModuleRefresh(useCallback(() => load(0), [load]))
 
   const resetForm = () => {
+    if (pendingCover) URL.revokeObjectURL(pendingCover.previewUrl)
+    if (pendingVideo) URL.revokeObjectURL(pendingVideo.previewUrl)
+    setPendingCover(null)
+    setPendingVideo(null)
     setEditing(null)
     form.setFieldsValue(officialInfoFormToEditor(emptyOfficialInfoForm()))
   }
 
   const startEdit = (item: OfficialInfoItem) => {
+    if (pendingCover) URL.revokeObjectURL(pendingCover.previewUrl)
+    if (pendingVideo) URL.revokeObjectURL(pendingVideo.previewUrl)
+    setPendingCover(null)
+    setPendingVideo(null)
     setEditing(item)
     form.setFieldsValue(officialInfoFormToEditor(officialInfoToForm(item)))
   }
 
-  const uploadCover = async (file: File) => {
-    setIsUploading(true)
-    try {
-      const url = await uploadAdminImage(file)
-      if (url) form.setFieldsValue({ coverImageUrl: url })
-    } catch (err) {
-      messageApi.error(err instanceof Error ? err.message : '图片上传失败')
-    } finally {
-      setIsUploading(false)
-    }
+  const chooseCover = (file: File) => {
+    if (pendingCover) URL.revokeObjectURL(pendingCover.previewUrl)
+    const previewUrl = URL.createObjectURL(file)
+    setPendingCover({ file, previewUrl })
+    form.setFieldsValue({ coverImageUrl: previewUrl })
+  }
+
+  const chooseVideo = (file: File) => {
+    if (pendingVideo) URL.revokeObjectURL(pendingVideo.previewUrl)
+    const previewUrl = URL.createObjectURL(file)
+    setPendingVideo({ file, previewUrl })
+    form.setFieldsValue({ videoUrl: previewUrl })
   }
 
   const submit = async (values: OfficialInfoEditorValue) => {
     setIsSaving(true)
     try {
-      await saveOfficialInfoItem({ ...values, publishDate: values.publishDate.format('YYYY-MM-DD') }, editing?.id)
+      let coverImageUrl = values.coverImageUrl
+      let finalVideoUrl = values.videoUrl
+      if (pendingCover && values.coverImageUrl === pendingCover.previewUrl) {
+        setIsUploading(true)
+        coverImageUrl = await uploadAdminImage(pendingCover.file)
+      }
+      if (pendingVideo && values.videoUrl === pendingVideo.previewUrl) {
+        setIsUploading(true)
+        finalVideoUrl = await uploadAdminVideo(pendingVideo.file)
+      }
+      await saveOfficialInfoItem({
+        ...values,
+        coverImageUrl,
+        videoUrl: finalVideoUrl,
+        publishDate: values.publishDate.format('YYYY-MM-DD'),
+      }, editing?.id)
       messageApi.success(editing ? '官方资讯已保存' : '官方资讯已新增')
       resetForm()
       await load(0)
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : '官方资讯保存失败')
     } finally {
+      setIsUploading(false)
       setIsSaving(false)
     }
   }
@@ -135,11 +165,27 @@ export function OfficialInfoPage() {
                     label="封面图"
                     imageUrls={coverImageUrl}
                     isUploading={isUploading}
-                    onChooseFile={(file) => void uploadCover(file)}
-                    onRemove={() => form.setFieldsValue({ coverImageUrl: '' })}
+                    onChooseFile={chooseCover}
+                    onRemove={() => {
+                      if (pendingCover) URL.revokeObjectURL(pendingCover.previewUrl)
+                      setPendingCover(null)
+                      form.setFieldsValue({ coverImageUrl: '' })
+                    }}
                   />
                 </Form.Item>
-                <Form.Item name="videoUrl" label="视频 / 外链 URL" className="span-2"><Input placeholder="https://..." /></Form.Item>
+                <Form.Item name="videoUrl" className="span-2">
+                  <VideoUploadField
+                    label="上传视频"
+                    videoUrl={videoUrl}
+                    isUploading={isUploading}
+                    onChooseFile={chooseVideo}
+                    onRemove={() => {
+                      if (pendingVideo) URL.revokeObjectURL(pendingVideo.previewUrl)
+                      setPendingVideo(null)
+                      form.setFieldsValue({ videoUrl: '' })
+                    }}
+                  />
+                </Form.Item>
               </div>
               <Button type="primary" htmlType="submit" loading={isSaving} disabled={isUploading}>{editing ? '保存修改' : '新增资讯'}</Button>
             </Form>

@@ -4,6 +4,7 @@ import type { Post } from '../types/admin'
 export function getFullImageUrl(imageUrl: string) {
   const safeUrl = imageUrl.trim()
   if (!safeUrl) return ''
+  if (safeUrl.startsWith('blob:') || safeUrl.startsWith('data:')) return safeUrl
   if (safeUrl.startsWith('http://') || safeUrl.startsWith('https://')) return safeUrl
   if (safeUrl.startsWith('/')) return `${API_BASE}${safeUrl}`
   return `${API_BASE}/${safeUrl}`

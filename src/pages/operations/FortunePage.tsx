@@ -26,6 +26,7 @@ export function FortunePage() {
   const [editing, setEditing] = useState<FortuneCard | null>(null)
   const [isSaving, setIsSaving] = useState(false)
   const [isUploading, setIsUploading] = useState(false)
+  const [pendingPatternImage, setPendingPatternImage] = useState<{ file: File; previewUrl: string } | null>(null)
   const loader = useCallback((page: number) => fetchFortuneCards({ status, keyword, fromDate, toDate, page }), [fromDate, keyword, status, toDate])
   const { state, load } = useAdminPage(loader, '福运卡管理')
   const patternImageUrl = Form.useWatch('patternImageUrl', form) || ''
@@ -41,37 +42,42 @@ export function FortunePage() {
   useRegisterModuleRefresh(useCallback(() => load(0), [load]))
 
   const resetForm = () => {
+    if (pendingPatternImage) URL.revokeObjectURL(pendingPatternImage.previewUrl)
+    setPendingPatternImage(null)
     setEditing(null)
     form.setFieldsValue(fortuneFormToEditor(emptyFortuneCardForm()))
   }
 
   const startEdit = (item: FortuneCard) => {
+    if (pendingPatternImage) URL.revokeObjectURL(pendingPatternImage.previewUrl)
+    setPendingPatternImage(null)
     setEditing(item)
     form.setFieldsValue(fortuneFormToEditor(fortuneCardToForm(item)))
   }
 
-  const uploadPatternImage = async (file: File) => {
-    setIsUploading(true)
-    try {
-      const url = await uploadAdminImage(file)
-      if (url) form.setFieldsValue({ patternImageUrl: url })
-    } catch (err) {
-      messageApi.error(err instanceof Error ? err.message : '图片上传失败')
-    } finally {
-      setIsUploading(false)
-    }
+  const choosePatternImage = (file: File) => {
+    if (pendingPatternImage) URL.revokeObjectURL(pendingPatternImage.previewUrl)
+    const previewUrl = URL.createObjectURL(file)
+    setPendingPatternImage({ file, previewUrl })
+    form.setFieldsValue({ patternImageUrl: previewUrl })
   }
 
   const submit = async (values: FortuneEditorValue) => {
     setIsSaving(true)
     try {
-      await saveFortuneCard({ ...values, displayDate: values.displayDate.format('YYYY-MM-DD') }, editing?.id)
+      let patternImageUrl = values.patternImageUrl
+      if (pendingPatternImage && values.patternImageUrl === pendingPatternImage.previewUrl) {
+        setIsUploading(true)
+        patternImageUrl = await uploadAdminImage(pendingPatternImage.file)
+      }
+      await saveFortuneCard({ ...values, patternImageUrl, displayDate: values.displayDate.format('YYYY-MM-DD') }, editing?.id)
       messageApi.success(editing ? '福运卡已保存' : '福运卡已创建')
       resetForm()
       await load(0)
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : '福运卡保存失败')
     } finally {
+      setIsUploading(false)
       setIsSaving(false)
     }
   }
@@ -130,8 +136,12 @@ export function FortunePage() {
                     label="图案图片"
                     imageUrls={patternImageUrl}
                     isUploading={isUploading}
-                    onChooseFile={(file) => void uploadPatternImage(file)}
-                    onRemove={() => form.setFieldsValue({ patternImageUrl: '' })}
+                    onChooseFile={choosePatternImage}
+                    onRemove={() => {
+                      if (pendingPatternImage) URL.revokeObjectURL(pendingPatternImage.previewUrl)
+                      setPendingPatternImage(null)
+                      form.setFieldsValue({ patternImageUrl: '' })
+                    }}
                   />
                 </Form.Item>
               </div>
