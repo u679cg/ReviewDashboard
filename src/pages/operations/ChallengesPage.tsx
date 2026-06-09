@@ -105,13 +105,14 @@ export function ChallengesPage() {
     }
   }
 
-  const archiveChallenge = async (item: AdminChallenge) => {
+  const toggleChallengeStatus = async (item: AdminChallenge) => {
+    const nextStatus = item.challenge.status === 'PUBLISHED' ? 'ARCHIVED' : 'PUBLISHED'
     try {
-      await updateChallengeStatus(item.challenge.id, 'ARCHIVED')
-      messageApi.success('挑战活动已下架，Android 端将不再同步展示')
+      await updateChallengeStatus(item.challenge.id, nextStatus)
+      messageApi.success(nextStatus === 'ARCHIVED' ? '挑战活动已下架，Android 端将不再同步展示' : '挑战活动已重新发布')
       await Promise.all([load(state.page), refreshOverview()])
     } catch (err) {
-      messageApi.error(err instanceof Error ? err.message : '挑战下架失败')
+      messageApi.error(err instanceof Error ? err.message : '挑战状态更新失败')
     }
   }
 
@@ -174,7 +175,7 @@ export function ChallengesPage() {
                 key={item.challenge.id}
                 item={item}
                 onEdit={() => startEdit(item)}
-                onArchive={() => void archiveChallenge(item)}
+                onToggleStatus={() => void toggleChallengeStatus(item)}
                 onDelete={() => void removeChallenge(item)}
               />
             ))}

@@ -51,15 +51,16 @@ export function BannerCard({
 export function ChallengeCard({
   item,
   onEdit,
-  onArchive,
+  onToggleStatus,
   onDelete,
 }: {
   item: AdminChallenge
   onEdit: () => void
-  onArchive: () => void
+  onToggleStatus: () => void
   onDelete: () => void
 }) {
   const challenge = item.challenge
+  const isPublished = challenge.status === 'PUBLISHED'
   const images = challenge.inspirationImageUrls
     .split(',')
     .map((url) => getFullImageUrl(url))
@@ -90,8 +91,13 @@ export function ChallengeCard({
       </div>
       <div className="knowledge-admin-actions">
         <Button className="ghost-button" onClick={onEdit}>编辑</Button>
-        <Popconfirm title="确认下架这个挑战活动？Android 端会立即不再同步展示。" okText="下架" cancelText="取消" onConfirm={onArchive}>
-          <Button className="ghost-button" disabled={challenge.status === 'ARCHIVED'}>下架</Button>
+        <Popconfirm
+          title={isPublished ? '确认下架这个挑战活动？Android 端会立即不再同步展示。' : '确认重新发布这个挑战活动？'}
+          okText={isPublished ? '下架' : '发布'}
+          cancelText="取消"
+          onConfirm={onToggleStatus}
+        >
+          <Button className="ghost-button">{isPublished ? '下架' : '发布'}</Button>
         </Popconfirm>
         <Popconfirm title="确认删除这个挑战活动？相关尝试和参与记录也会清理。" okText="删除" cancelText="取消" onConfirm={onDelete}>
           <Button className="ghost-button danger">删除</Button>
