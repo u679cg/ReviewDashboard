@@ -9,6 +9,7 @@ import {
   PictureOutlined,
   ReadOutlined,
   TeamOutlined,
+  VideoCameraOutlined,
 } from '@ant-design/icons'
 import { Alert, Button, Layout, Menu } from 'antd'
 import type { MenuProps } from 'antd'
@@ -41,6 +42,7 @@ const menuItems: MenuProps['items'] = [
       { key: '/operations/challenges', icon: <FlagOutlined />, label: <NavLink to="/operations/challenges">挑战活动</NavLink> },
       { key: '/operations/fortune', icon: <CalendarOutlined />, label: <NavLink to="/operations/fortune">福运卡</NavLink> },
       { key: '/operations/knowledge', icon: <ReadOutlined />, label: <NavLink to="/operations/knowledge">科普页</NavLink> },
+      { key: '/operations/technique-videos', icon: <VideoCameraOutlined />, label: <NavLink to="/operations/technique-videos">技法视频</NavLink> },
       { key: '/operations/official-info', icon: <HomeOutlined />, label: <NavLink to="/operations/official-info">官方资讯</NavLink> },
     ],
   },

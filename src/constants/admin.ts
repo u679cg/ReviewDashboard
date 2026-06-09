@@ -9,6 +9,7 @@ import type {
   PostFilter,
   ReportFilter,
   ReportKind,
+  TechniqueVideoFilter,
 } from '../types/admin'
 import type { FortuneCardStatus } from '../types/admin'
 
@@ -34,6 +35,12 @@ export const officialInfoFilters: Array<{ key: OfficialInfoFilter; label: string
   { key: 'all', label: '全部' },
   { key: 'PUBLISHED', label: '展示中' },
   { key: 'ARCHIVED', label: '已下架' },
+]
+
+export const techniqueVideoFilters: Array<{ key: TechniqueVideoFilter; label: string }> = [
+  { key: 'all', label: '全部视频' },
+  { key: 'ENABLED', label: '展示中' },
+  { key: 'DISABLED', label: '已停用' },
 ]
 
 export const postFilters: Array<{ key: PostFilter; label: string }> = [

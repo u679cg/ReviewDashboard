@@ -12,6 +12,7 @@ import { ChallengesPage } from './pages/operations/ChallengesPage'
 import { FortunePage } from './pages/operations/FortunePage'
 import { KnowledgePage } from './pages/operations/KnowledgePage'
 import { OfficialInfoPage } from './pages/operations/OfficialInfoPage'
+import { TechniqueVideosPage } from './pages/operations/TechniqueVideosPage'
 
 function App() {
   return (
@@ -29,6 +30,7 @@ function App() {
             <Route path="/operations/fortune" element={<FortunePage />} />
             <Route path="/operations/knowledge" element={<KnowledgePage />} />
             <Route path="/operations/official-info" element={<OfficialInfoPage />} />
+            <Route path="/operations/technique-videos" element={<TechniqueVideosPage />} />
             <Route path="*" element={<Navigate to="/audit/posts" replace />} />
           </Route>
         </Routes>

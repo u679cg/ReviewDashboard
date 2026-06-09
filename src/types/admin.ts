@@ -103,6 +103,7 @@ export type KnowledgeSubmissionStatus = 'PENDING' | 'ADOPTED' | 'REJECTED'
 export type KnowledgeStatus = 'PUBLISHED' | 'ARCHIVED'
 export type OfficialInfoStatus = 'PUBLISHED' | 'ARCHIVED'
 export type OfficialInfoCategory = 'HOT' | 'INTERVIEW_VIDEO' | 'ACTIVITY' | 'ARTICLE'
+export type TechniqueVideoFilter = 'all' | 'ENABLED' | 'DISABLED'
 export type KnowledgeFilter = 'all' | KnowledgeStatus
 export type OfficialInfoFilter = 'all' | OfficialInfoStatus
 export type PostFilter = 'all' | 'pending' | 'approved' | 'rejected'
@@ -215,6 +216,25 @@ export type OfficialInfoFormValue = {
   sortOrder: number
 }
 
+export type TechniqueVideo = {
+  id: number
+  title: string
+  description: string
+  videoUrl: string
+  sortOrder: number
+  enabled: boolean
+  createTime?: string
+  updateTime?: string
+}
+
+export type TechniqueVideoFormValue = {
+  title: string
+  description: string
+  videoUrl: string
+  sortOrder: number
+  enabled: boolean
+}
+
 export type OperationBanner = {
   id: number
   placement: BannerPlacement
@@ -277,5 +297,6 @@ export type ModuleKey =
   | 'fortune'
   | 'knowledge'
   | 'officialInfo'
+  | 'techniqueVideos'
 
 export type ModuleStateSetter<T> = Dispatch<SetStateAction<ModuleState<T>>>

@@ -9,6 +9,8 @@ import type {
   OfficialInfoItem,
   OperationBanner,
   OperationBannerFormValue,
+  TechniqueVideo,
+  TechniqueVideoFormValue,
 } from '../types/admin'
 import { toDateInputValue, toDatetimeLocal } from './date'
 
@@ -133,6 +135,26 @@ export function officialInfoToForm(item: OfficialInfoItem): OfficialInfoFormValu
     publishDate: toDateInputValue(item.publishDate),
     status: item.status,
     sortOrder: item.sortOrder,
+  }
+}
+
+export function emptyTechniqueVideoForm(): TechniqueVideoFormValue {
+  return {
+    title: '',
+    description: '',
+    videoUrl: '',
+    sortOrder: 0,
+    enabled: true,
+  }
+}
+
+export function techniqueVideoToForm(item: TechniqueVideo): TechniqueVideoFormValue {
+  return {
+    title: item.title,
+    description: item.description,
+    videoUrl: item.videoUrl,
+    sortOrder: item.sortOrder,
+    enabled: item.enabled,
   }
 }
 

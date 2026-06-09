@@ -30,6 +30,9 @@ import type {
   PostReport,
   ReportFilter,
   ReportResult,
+  TechniqueVideo,
+  TechniqueVideoFilter,
+  TechniqueVideoFormValue,
   UserGroup,
 } from '../types/admin'
 import { buildUrl, request, requestUrl, uploadForm } from './request'
@@ -161,6 +164,15 @@ export function fetchOfficialInfoItems(params: {
   }), '官方资讯加载')
 }
 
+export function fetchTechniqueVideos(params: { status: TechniqueVideoFilter; keyword: string; page?: number; size?: number }) {
+  return requestUrl<AdminPageResponse<TechniqueVideo>>(buildUrl('/api/culture/techniques/admin', {
+    status: params.status,
+    keyword: params.keyword,
+    page: params.page ?? 0,
+    size: params.size ?? PAGE_SIZE,
+  }), '技法视频加载')
+}
+
 export function reviewPost(postId: number, action: 'pass' | 'reject') {
   return request<void>('/api/posts/review', {
     method: 'POST',
@@ -280,6 +292,24 @@ export function updateOfficialInfoStatus(infoId: number, status: OfficialInfoSta
 
 export function deleteOfficialInfoItem(infoId: number) {
   return request<void>(`/api/official-info/admin/${infoId}`, { method: 'DELETE' }, '官方资讯删除')
+}
+
+export function saveTechniqueVideo(video: TechniqueVideoFormValue, videoId?: number) {
+  return request<void>(videoId ? `/api/culture/techniques/admin/${videoId}` : '/api/culture/techniques/admin', {
+    method: videoId ? 'PUT' : 'POST',
+    body: JSON.stringify(video),
+  }, '技法视频保存')
+}
+
+export function updateTechniqueVideoEnabled(videoId: number, enabled: boolean) {
+  return request<void>(`/api/culture/techniques/admin/${videoId}/enabled`, {
+    method: 'PATCH',
+    body: JSON.stringify({ enabled }),
+  }, '技法视频状态更新')
+}
+
+export function deleteTechniqueVideo(videoId: number) {
+  return request<void>(`/api/culture/techniques/admin/${videoId}`, { method: 'DELETE' }, '技法视频删除')
 }
 
 export async function uploadAdminImage(file: File) {
