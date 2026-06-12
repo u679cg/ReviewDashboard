@@ -171,6 +171,7 @@ export type KnowledgeItem = {
   optionsJson: string
   answer: string
   answerExplanation: string
+  imageUrls: string
   sourceType: string
   status: KnowledgeStatus
   authorSubmissionId?: number | null
@@ -186,6 +187,7 @@ export type KnowledgeFormValue = {
   optionsJson: string
   answer: string
   answerExplanation: string
+  imageUrls: string
   status: KnowledgeStatus
 }
 

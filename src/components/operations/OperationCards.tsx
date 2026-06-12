@@ -175,6 +175,7 @@ export function KnowledgeAdminCard({
         </span>
         <time>{item.sourceType === 'USER' ? '用户投稿' : '官方内容'}</time>
       </div>
+      {item.imageUrls && <ImageGridFromUrls imageUrls={item.imageUrls} />}
       <p className="eyebrow">{item.category}</p>
       <h3>{item.title}</h3>
       <p>{item.content || '暂无正文'}</p>

@@ -92,6 +92,7 @@ export function emptyKnowledgeForm(): KnowledgeFormValue {
     optionsJson: '["正确","错误"]',
     answer: 'false',
     answerExplanation: '',
+    imageUrls: '',
     status: 'PUBLISHED',
   }
 }
@@ -106,6 +107,7 @@ export function knowledgeToForm(item: KnowledgeItem): KnowledgeFormValue {
     optionsJson: item.optionsJson,
     answer: item.answer,
     answerExplanation: item.answerExplanation,
+    imageUrls: item.imageUrls || '',
     status: item.status,
   }
 }

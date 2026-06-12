@@ -1,14 +1,16 @@
 import { Button, Card, Empty, Form, Input, Segmented, Select, message } from 'antd'
 import { useCallback, useEffect, useState } from 'react'
-import { deleteKnowledgeItem, fetchKnowledgeItems, saveKnowledgeItem, updateKnowledgeStatus } from '../../api/admin'
+import { deleteKnowledgeItem, fetchKnowledgeItems, saveKnowledgeItem, updateKnowledgeStatus, uploadAdminImage } from '../../api/admin'
 import { knowledgeCategories, knowledgeFilters, knowledgeSourceFilters } from '../../constants/admin'
 import { ModuleFrame } from '../../components/ModuleFrame'
+import { ImageUploadField } from '../../components/media/ImageUploadField'
 import { KnowledgeAdminCard } from '../../components/operations/OperationCards'
 import { useAdminPage } from '../../hooks/useAdminPage'
 import { useRegisterModuleRefresh } from '../../hooks/useRegisterModuleRefresh'
 import { useSearchKeyword } from '../../hooks/useSearchKeyword'
 import type { KnowledgeFilter, KnowledgeFormValue, KnowledgeItem, KnowledgeSourceFilter, KnowledgeStatus } from '../../types/admin'
 import { emptyKnowledgeForm, knowledgeToForm } from '../../utils/forms'
+import { splitImageUrls } from '../../utils/image'
 import { nextKnowledgeStatus } from '../../utils/status'
 
 export function KnowledgePage() {
@@ -20,9 +22,12 @@ export function KnowledgePage() {
   const [sourceType, setSourceType] = useState<KnowledgeSourceFilter>('all')
   const [editing, setEditing] = useState<KnowledgeItem | null>(null)
   const [isSaving, setIsSaving] = useState(false)
+  const [isUploading, setIsUploading] = useState(false)
+  const [pendingImages, setPendingImages] = useState<Array<{ file: File; previewUrl: string }>>([])
   const loader = useCallback((page: number) => fetchKnowledgeItems({ status, category, sourceType, keyword, page }), [category, keyword, sourceType, status])
   const { state, load } = useAdminPage(loader, '科普页管理')
   const questionType = Form.useWatch('questionType', form)
+  const imageUrls = Form.useWatch('imageUrls', form) || ''
 
   useEffect(() => {
     form.setFieldsValue(emptyKnowledgeForm())
@@ -35,25 +40,60 @@ export function KnowledgePage() {
   useRegisterModuleRefresh(useCallback(() => load(0), [load]))
 
   const resetForm = () => {
+    pendingImages.forEach((item) => URL.revokeObjectURL(item.previewUrl))
+    setPendingImages([])
     setEditing(null)
     form.setFieldsValue(emptyKnowledgeForm())
   }
 
   const startEdit = (item: KnowledgeItem) => {
+    pendingImages.forEach((pending) => URL.revokeObjectURL(pending.previewUrl))
+    setPendingImages([])
     setEditing(item)
     form.setFieldsValue(knowledgeToForm(item))
+  }
+
+  const chooseImages = (files: File[]) => {
+    const existingUrls = splitImageUrls(imageUrls)
+    const remaining = 9 - existingUrls.length
+    if (remaining <= 0) return
+    const nextPending = files.slice(0, remaining).map((file) => ({
+      file,
+      previewUrl: URL.createObjectURL(file),
+    }))
+    setPendingImages((current) => [...current, ...nextPending])
+    form.setFieldsValue({ imageUrls: [...existingUrls, ...nextPending.map((item) => item.previewUrl)].slice(0, 9).join(',') })
+  }
+
+  const removeImage = (url: string) => {
+    const removedPending = pendingImages.find((item) => item.previewUrl === url)
+    if (removedPending) URL.revokeObjectURL(removedPending.previewUrl)
+    setPendingImages((current) => current.filter((item) => item.previewUrl !== url))
+    form.setFieldsValue({ imageUrls: splitImageUrls(imageUrls).filter((item) => item !== url).join(',') })
   }
 
   const submit = async (values: KnowledgeFormValue) => {
     setIsSaving(true)
     try {
-      await saveKnowledgeItem(values, editing?.id)
+      const pendingByPreview = new Map(pendingImages.map((item) => [item.previewUrl, item.file]))
+      const finalImageUrls: string[] = []
+      for (const url of splitImageUrls(values.imageUrls)) {
+        const pendingFile = pendingByPreview.get(url)
+        if (pendingFile) {
+          setIsUploading(true)
+          finalImageUrls.push(await uploadAdminImage(pendingFile))
+        } else {
+          finalImageUrls.push(url)
+        }
+      }
+      await saveKnowledgeItem({ ...values, imageUrls: finalImageUrls.filter(Boolean).join(',') }, editing?.id)
       messageApi.success(editing ? '科普内容已保存' : '科普内容已新增')
       resetForm()
       await load(0)
     } catch (err) {
       messageApi.error(err instanceof Error ? err.message : '科普内容保存失败')
     } finally {
+      setIsUploading(false)
       setIsSaving(false)
     }
   }
@@ -116,8 +156,18 @@ export function KnowledgePage() {
                 <Form.Item name="questionText" label="题目" className="span-2"><Input.TextArea rows={3} /></Form.Item>
                 <Form.Item name="optionsJson" label="选项 JSON" className="span-2"><Input placeholder='["A","B","C"]' /></Form.Item>
                 <Form.Item name="answerExplanation" label="答案解析" className="span-2"><Input.TextArea rows={3} /></Form.Item>
+                <Form.Item name="imageUrls" className="span-2">
+                  <ImageUploadField
+                    label="小知识图片"
+                    imageUrls={imageUrls}
+                    multiple
+                    isUploading={isUploading}
+                    onChooseFiles={chooseImages}
+                    onRemove={removeImage}
+                  />
+                </Form.Item>
               </div>
-              <Button type="primary" htmlType="submit" loading={isSaving}>{editing ? '保存修改' : '新增内容'}</Button>
+              <Button type="primary" htmlType="submit" loading={isSaving} disabled={isUploading}>{editing ? '保存修改' : '新增内容'}</Button>
             </Form>
           </Card>
           <div className="knowledge-list-pane">
