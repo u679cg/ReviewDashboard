@@ -689,6 +689,49 @@ time,
   min-width: 0;
 }
 
+.image-upload-field .ant-upload-select-picture-card,
+.video-upload-field .ant-upload-select-picture-card {
+  width: 112px;
+  height: 112px;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--rice);
+}
+
+.image-upload-field .ant-upload-select-picture-card .ant-upload,
+.video-upload-field .ant-upload-select-picture-card .ant-upload {
+  width: 100%;
+  height: 100%;
+}
+
+.image-upload-trigger {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--red);
+  font-weight: 900;
+  text-align: center;
+}
+
+.image-upload-trigger .anticon {
+  font-size: 24px;
+}
+
+.image-upload-trigger span {
+  color: inherit;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.image-upload-trigger.is-uploading {
+  opacity: 0.62;
+}
+
 .video-upload-field {
   display: grid;
   gap: 10px;

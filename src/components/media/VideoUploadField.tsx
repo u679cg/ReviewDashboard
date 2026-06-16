@@ -31,7 +31,10 @@ export function VideoUploadField({
       <Upload
         accept="video/*"
         maxCount={1}
+        listType="picture-card"
         fileList={fileList}
+        showUploadList={false}
+        disabled={isUploading}
         beforeUpload={(file) => {
           onChooseFile(file as File)
           return Upload.LIST_IGNORE
@@ -41,7 +44,10 @@ export function VideoUploadField({
           return true
         }}
       >
-        <Button icon={<UploadOutlined />} loading={isUploading}>{label}</Button>
+        <div className={`image-upload-trigger${isUploading ? ' is-uploading' : ''}`}>
+          <UploadOutlined />
+          <span>{isUploading ? '上传中...' : label}</span>
+        </div>
       </Upload>
       {safeUrl && (
         <div className="video-upload-preview">

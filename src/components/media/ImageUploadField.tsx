@@ -1,4 +1,4 @@
-import { Button, Upload } from 'antd'
+import { Upload } from 'antd'
 import { UploadOutlined } from '@ant-design/icons'
 import type { UploadFile } from 'antd'
 import { getFullImageUrl, splitImageUrls } from '../../utils/image'
@@ -35,6 +35,7 @@ export function ImageUploadField({
         multiple={multiple}
         listType="picture-card"
         fileList={fileList}
+        disabled={isUploading}
         beforeUpload={(file, files) => {
           if (multiple) {
             const currentFile = file as File & { uid?: string }
@@ -52,7 +53,10 @@ export function ImageUploadField({
           return true
         }}
       >
-        <Button icon={<UploadOutlined />} loading={isUploading}>{label}</Button>
+        <div className={`image-upload-trigger${isUploading ? ' is-uploading' : ''}`}>
+          <UploadOutlined />
+          <span>{isUploading ? '上传中...' : label}</span>
+        </div>
       </Upload>
     </div>
   )
